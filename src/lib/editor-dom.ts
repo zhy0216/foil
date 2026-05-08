@@ -158,24 +158,59 @@ export function wrapRangeInEditor(
     return null;
   }
 
-  const a = findNodeAt(start);
-  const b = findNodeAt(end);
-  if (!a || !b) return;
-  if (a.node === b.node) {
-    const t = a.node.textContent ?? '';
-    const before = t.slice(0, a.off);
-    const middle = t.slice(a.off, b.off);
-    const after = t.slice(b.off);
+  function blockOf(node: Node): HTMLElement | null {
+    let n: Node | null = node;
+    while (n && n !== root) {
+      const el = n as HTMLElement;
+      if (el.classList && el.classList.contains('ln')) return el;
+      n = n.parentNode;
+    }
+    return null;
+  }
+
+  function wrapSegment(node: Text, from: number, to: number): void {
+    if (from >= to) return;
+    const t = node.textContent ?? '';
+    const before = t.slice(0, from);
+    const middle = t.slice(from, to);
+    const after = t.slice(to);
     const span = document.createElement('span');
     span.className = cls;
     if (id) span.dataset.anchorId = id;
     span.textContent = middle;
-    const parent = a.node.parentNode!;
-    const beforeNode = document.createTextNode(before);
-    const afterNode = document.createTextNode(after);
-    parent.insertBefore(beforeNode, a.node);
-    parent.insertBefore(span, a.node);
-    parent.insertBefore(afterNode, a.node);
-    parent.removeChild(a.node);
+    const parent = node.parentNode!;
+    if (before) parent.insertBefore(document.createTextNode(before), node);
+    parent.insertBefore(span, node);
+    if (after) parent.insertBefore(document.createTextNode(after), node);
+    parent.removeChild(node);
   }
+
+  const a = findNodeAt(start);
+  const b = findNodeAt(end);
+  if (!a || !b) return;
+  if (a.node === b.node) {
+    wrapSegment(a.node, a.off, b.off);
+    return;
+  }
+  const blockA = blockOf(a.node);
+  const blockB = blockOf(b.node);
+  if (!blockA || blockA !== blockB) return;
+  const walker = document.createTreeWalker(blockA, NodeFilter.SHOW_TEXT);
+  const segments: Array<{ node: Text; from: number; to: number }> = [];
+  let node: Text | null;
+  let started = false;
+  while ((node = walker.nextNode() as Text | null)) {
+    if (node === a.node) {
+      started = true;
+      segments.push({ node, from: a.off, to: (node.textContent ?? '').length });
+      continue;
+    }
+    if (!started) continue;
+    if (node === b.node) {
+      segments.push({ node, from: 0, to: b.off });
+      break;
+    }
+    segments.push({ node, from: 0, to: (node.textContent ?? '').length });
+  }
+  for (const seg of segments) wrapSegment(seg.node, seg.from, seg.to);
 }
