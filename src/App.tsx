@@ -535,6 +535,7 @@ export default function App() {
         <span>{stats.chars.toLocaleString()} chars</span>
         <span className="sep">·</span>
         <span>{stats.minutes} min read</span>
+        <span className="spacer" aria-hidden="true" />
         <div className="right">
           <span>Markdown</span>
           <span className={'save-state ' + (saveState === 'saving' ? 'saving' : '')}>

@@ -590,7 +590,8 @@ input, textarea { font: inherit; color: inherit; }
   bottom: 0; left: 0; right: 0;
   display: flex;
   align-items: center;
-  gap: 18px;
+  flex-wrap: wrap;
+  gap: 6px 14px;
   padding: 8px 20px;
   background: color-mix(in oklch, var(--bg) 92%, transparent);
   backdrop-filter: blur(8px);
@@ -601,8 +602,10 @@ input, textarea { font: inherit; color: inherit; }
   font-family: var(--font-mono);
   z-index: 10;
 }
+.statusbar > span { white-space: nowrap; }
 .statusbar .sep { color: var(--border-strong); }
-.statusbar .right { margin-left: auto; display: flex; gap: 18px; }
+.statusbar .spacer { flex: 1 1 0; min-width: 0; }
+.statusbar .right { display: flex; align-items: center; gap: 14px; white-space: nowrap; }
 .statusbar .save-state { color: var(--accent-hi); }
 .statusbar .save-state.saving { color: var(--fg-subtle); }
 
@@ -816,4 +819,26 @@ input, textarea { font: inherit; color: inherit; }
   .font-grid { grid-template-columns: 1fr 1fr; }
   .swatch-row { grid-template-columns: repeat(3, 1fr); }
   .settings-section.split { grid-template-columns: 1fr; }
+
+  .topbar { flex-wrap: wrap; row-gap: 8px; }
+  .viewing-chip { order: 99; }
+
+  .modal-backdrop {
+    align-items: flex-start;
+    padding: 24px 0 max(24px, env(safe-area-inset-bottom));
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .modal {
+    width: calc(100% - 24px);
+    padding: 20px;
+  }
+  .modal input[type="text"], .modal input[type="password"] {
+    font-size: 16px;
+    padding: 10px 12px;
+  }
+  .modal-actions .btn {
+    padding: 10px 14px;
+    font-size: var(--text-sm);
+  }
 }
