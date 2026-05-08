@@ -148,6 +148,7 @@ input, textarea { font: inherit; color: inherit; }
 /* ---------- Editor ---------- */
 .editor {
   outline: 0;
+  box-shadow: none;
   font-family: var(--font-prose);
   font-size: 19px;
   line-height: 1.7;
