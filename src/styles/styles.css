@@ -393,6 +393,51 @@ input, textarea { font: inherit; color: inherit; }
 }
 .comment-thread .small-actions button:hover { color: var(--fg); }
 
+/* Mobile bottom sheet for threads (only shown ≤1100px) */
+.mobile-thread-overlay { display: none; }
+@media (max-width: 1100px) {
+  .mobile-thread-overlay {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: color-mix(in oklch, black 40%, transparent);
+    z-index: 50;
+    animation: mt-fade 120ms ease-out;
+  }
+  .mobile-thread-sheet {
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    background: var(--bg-raised);
+    border-top: 1px solid var(--border);
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    padding: 16px 16px calc(16px + env(safe-area-inset-bottom));
+    max-height: 75vh;
+    overflow-y: auto;
+    animation: mt-slide 180ms ease-out;
+  }
+  .mobile-thread-sheet .comment-thread {
+    position: static;
+    width: auto;
+    margin: 0;
+    border: 0;
+    background: transparent;
+    padding: 0;
+    box-shadow: none;
+  }
+  .mobile-thread-close {
+    position: absolute;
+    top: 8px; right: 10px;
+    width: 32px; height: 32px;
+    border: 0; background: transparent;
+    color: var(--fg-subtle);
+    font-size: 22px; line-height: 1;
+    cursor: pointer; border-radius: var(--radius-sm);
+  }
+  .mobile-thread-close:hover { color: var(--fg); background: var(--bg); }
+}
+@keyframes mt-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes mt-slide { from { transform: translateY(100%); } to { transform: translateY(0); } }
+
 /* highlight in editor for active anchor */
 .editor .anchor-hl {
   background: color-mix(in oklch, var(--accent) 18%, transparent);

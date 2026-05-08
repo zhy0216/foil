@@ -410,6 +410,7 @@ export default function App() {
             readOnly={readOnly}
             anchors={comments}
             activeAnchorId={activeAnchorId}
+            onAnchorClick={setActiveAnchorId}
           />
 
           {selection && !composer && editorWrapRef.current && (
@@ -501,6 +502,42 @@ export default function App() {
           ))}
         </div>
       </main>
+
+      {activeAnchorId &&
+        (() => {
+          const t = comments.find((c) => c.id === activeAnchorId);
+          if (!t) return null;
+          return (
+            <div
+              className="mobile-thread-overlay"
+              onClick={() => setActiveAnchorId(null)}
+              role="dialog"
+              aria-modal="true"
+            >
+              <div className="mobile-thread-sheet" onClick={(e) => e.stopPropagation()}>
+                <button
+                  className="mobile-thread-close"
+                  onClick={() => setActiveAnchorId(null)}
+                  aria-label="Close"
+                >
+                  ×
+                </button>
+                <Thread
+                  thread={t}
+                  active
+                  onActivate={() => {}}
+                  onReply={addReply}
+                  onDelete={(id) => {
+                    deleteThread(id);
+                    setActiveAnchorId(null);
+                  }}
+                  defaultName={userName}
+                  mode="sheet"
+                />
+              </div>
+            </div>
+          );
+        })()}
 
       <SettingsModal
         open={settingsOpen}

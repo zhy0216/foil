@@ -28,11 +28,19 @@ interface EditorProps {
   readOnly?: boolean;
   anchors: CommentThread[];
   activeAnchorId: string | null;
+  onAnchorClick?: (id: string) => void;
 }
 
 export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(props, ref) {
-  const { initialMarkdown, onChange, onSelectionChange, readOnly, anchors, activeAnchorId } =
-    props;
+  const {
+    initialMarkdown,
+    onChange,
+    onSelectionChange,
+    readOnly,
+    anchors,
+    activeAnchorId,
+    onAnchorClick,
+  } = props;
   const elRef = useRef<HTMLDivElement>(null);
   const lastMd = useRef<string>(initialMarkdown || '');
   const composing = useRef<boolean>(false);
@@ -285,6 +293,20 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(prop
       }
     });
   }, [anchors, activeAnchorId]);
+
+  // Delegated click handler — tapping a highlight focuses its thread.
+  useEffect(() => {
+    const el = elRef.current;
+    if (!el || !onAnchorClick) return;
+    const handler = (e: MouseEvent) => {
+      const target = (e.target as HTMLElement | null)?.closest<HTMLElement>('.anchor-hl');
+      if (!target) return;
+      const id = target.dataset.anchorId;
+      if (id) onAnchorClick(id);
+    };
+    el.addEventListener('click', handler);
+    return () => el.removeEventListener('click', handler);
+  }, [onAnchorClick]);
 
   return (
     <div

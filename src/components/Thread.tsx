@@ -2,12 +2,13 @@ import { useState } from 'react';
 import type { CommentThread } from '../types';
 
 interface ThreadProps {
-  thread: CommentThread & { top: number };
+  thread: CommentThread & { top?: number };
   active: boolean;
   onActivate: (id: string) => void;
   onReply: (threadId: string, body: string, author: string) => void;
   onDelete: (threadId: string) => void;
   defaultName: string;
+  mode?: 'gutter' | 'sheet';
 }
 
 function fmt(ts: number): string {
@@ -27,6 +28,7 @@ export function Thread({
   onReply,
   onDelete,
   defaultName,
+  mode = 'gutter',
 }: ThreadProps) {
   const [replying, setReplying] = useState(false);
   const [name, setName] = useState(defaultName || '');
@@ -43,7 +45,7 @@ export function Thread({
   return (
     <div
       className={'comment-thread' + (active ? ' active' : '')}
-      style={{ top: thread.top }}
+      style={mode === 'gutter' ? { top: thread.top } : undefined}
       onClick={() => onActivate(thread.id)}
     >
       <div className="anchor">"{thread.quote}"</div>
