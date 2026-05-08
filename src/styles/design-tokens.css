@@ -1,0 +1,184 @@
+/* ============================================================
+   Alumnium Design System — Colors & Type
+   Source of truth: alumnium.ai (Astro + Starlight theme)
+   Palette: Cerulean Blue (accent) + Zinc (neutrals)
+   Fonts: platform default ui-sans-serif / ui-monospace stacks
+   ============================================================ */
+
+:root {
+  /* ---------- BRAND ACCENT — Cerulean Blue ---------- */
+  --cerulean-50:  #ecf9ff;
+  --cerulean-100: #d5efff;
+  --cerulean-200: #b4e4ff;
+  --cerulean-300: #80d5ff;
+  --cerulean-400: #44bbff;   /* #4bf short */
+  --cerulean-500: #1a99ff;
+  --cerulean-600: #0278ff;   /* primary action */
+  --cerulean-700: #0060f9;
+  --cerulean-800: #044cc7;   /* logo background, dark hero wash */
+  --cerulean-900: #0b459d;
+  --cerulean-950: #0c2a5f;
+
+  /* ---------- NEUTRALS — Zinc (oklch) ---------- */
+  --zinc-50:  oklch(98.5% .001 286.375);
+  --zinc-100: oklch(96.7% .001 286.375);
+  --zinc-200: oklch(92.0% .004 286.32);
+  --zinc-300: oklch(87.1% .006 286.286);
+  --zinc-400: oklch(70.5% .015 286.067);
+  --zinc-500: oklch(55.2% .016 285.938);
+  --zinc-600: oklch(44.2% .017 285.786);
+  --zinc-700: oklch(37.0% .013 285.805);
+  --zinc-800: oklch(27.4% .006 286.033);
+  --zinc-900: oklch(21.0% .006 285.885);
+  --zinc-950: oklch(14.1% .005 285.823);
+
+  /* ---------- SEMANTIC HUES (Starlight) ---------- */
+  --hue-orange: 41;
+  --hue-green:  101;
+  --hue-blue:   234;
+  --hue-purple: 281;
+  --hue-red:    339;
+
+  /* ---------- TYPE — stacks (Starlight default) ---------- */
+  --font-sans: ui-sans-serif, system-ui, sans-serif,
+               "Apple Color Emoji", "Segoe UI Emoji",
+               "Segoe UI Symbol", "Noto Color Emoji";
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+               "Liberation Mono", "Courier New", monospace;
+
+  /* Weights actually used on the site */
+  --fw-regular:  400;
+  --fw-medium:   500;
+  --fw-semibold: 600;
+  --fw-bold:     700;
+
+  /* Starlight type scale */
+  --text-2xs: 0.75rem;
+  --text-xs:  0.8125rem;
+  --text-sm:  0.875rem;
+  --text-base: 1rem;
+  --text-lg:  1.125rem;
+  --text-xl:  1.25rem;
+  --text-2xl: 1.5rem;
+  --text-3xl: 1.8125rem;
+  --text-4xl: 2.1875rem;
+  --text-5xl: 2.625rem;
+  --text-6xl: 4rem;
+
+  /* ---------- SPACING / RADII / ELEVATION ---------- */
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+  --radius-pill: 999px;
+
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / .08);
+  --shadow-md: 0 4px 12px rgb(0 0 0 / .12);
+  --shadow-lg: 0 12px 32px rgb(0 0 0 / .18);
+  --shadow-ring: 0 0 0 3px rgb(2 120 255 / .35); /* focus */
+
+  --hairline: 1px solid var(--border);
+}
+
+/* ============================================================
+   DARK (default on alumnium.ai)
+   ============================================================ */
+:root,
+:root[data-theme="dark"] {
+  --bg:         var(--zinc-950);       /* page */
+  --bg-raised:  var(--zinc-900);       /* cards, nav */
+  --bg-inset:   var(--zinc-800);       /* inline code, wells */
+  --bg-sidebar: var(--zinc-950);
+
+  --fg:         #ffffff;               /* primary text */
+  --fg-muted:   var(--zinc-300);       /* secondary */
+  --fg-subtle:  var(--zinc-400);       /* tertiary, captions */
+  --fg-invert:  var(--zinc-950);
+
+  --border:        var(--zinc-800);
+  --border-strong: var(--zinc-700);
+
+  --accent:      var(--cerulean-600);  /* links, primary action */
+  --accent-hi:   var(--cerulean-200);  /* accent text on dark */
+  --accent-lo:   var(--cerulean-950);  /* accent bg, subtle */
+  --accent-hover: var(--cerulean-500);
+
+  --link:        var(--cerulean-400);
+  --link-hover:  var(--cerulean-300);
+
+  --code-bg:     var(--zinc-900);
+  --code-fg:     var(--zinc-100);
+}
+
+/* ============================================================
+   LIGHT
+   ============================================================ */
+:root[data-theme="light"] {
+  --bg:         #ffffff;
+  --bg-raised:  var(--zinc-50);
+  --bg-inset:   var(--zinc-100);
+  --bg-sidebar: var(--zinc-50);
+
+  --fg:         var(--zinc-900);
+  --fg-muted:   var(--zinc-700);
+  --fg-subtle:  var(--zinc-500);
+  --fg-invert:  #ffffff;
+
+  --border:        var(--zinc-200);
+  --border-strong: var(--zinc-300);
+
+  --accent:      var(--cerulean-600);
+  --accent-hi:   var(--cerulean-900);
+  --accent-lo:   var(--cerulean-50);
+  --accent-hover: var(--cerulean-700);
+
+  --link:        var(--cerulean-700);
+  --link-hover:  var(--cerulean-800);
+
+  --code-bg:     var(--zinc-100);
+  --code-fg:     var(--zinc-900);
+}
+
+/* ============================================================
+   BASE / SEMANTIC TYPOGRAPHY
+   ============================================================ */
+html { font-family: var(--font-sans); color: var(--fg); background: var(--bg); }
+body { font-size: var(--text-base); line-height: 1.6; }
+
+h1, .h1 { font-size: var(--text-5xl); font-weight: var(--fw-semibold); line-height: 1.1;  letter-spacing: -0.02em; }
+h2, .h2 { font-size: var(--text-4xl); font-weight: var(--fw-semibold); line-height: 1.15; letter-spacing: -0.015em; }
+h3, .h3 { font-size: var(--text-3xl); font-weight: var(--fw-semibold); line-height: 1.2;  letter-spacing: -0.01em; }
+h4, .h4 { font-size: var(--text-2xl); font-weight: var(--fw-semibold); line-height: 1.25; }
+h5, .h5 { font-size: var(--text-xl);  font-weight: var(--fw-semibold); line-height: 1.3; }
+h6, .h6 { font-size: var(--text-lg);  font-weight: var(--fw-semibold); line-height: 1.35; }
+
+p, .p      { font-size: var(--text-base); line-height: 1.65; color: var(--fg-muted); }
+.lead      { font-size: var(--text-lg); line-height: 1.55; color: var(--fg-muted); }
+.small     { font-size: var(--text-sm); color: var(--fg-subtle); }
+.caption   { font-size: var(--text-xs); color: var(--fg-subtle); text-transform: none; }
+
+code, kbd, samp, pre, .mono {
+  font-family: var(--font-mono);
+  font-size: 0.925em;
+}
+:not(pre) > code {
+  background: var(--code-bg);
+  color: var(--code-fg);
+  padding: 0.15em 0.4em;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+pre {
+  background: var(--code-bg);
+  color: var(--code-fg);
+  padding: 1rem 1.25rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  overflow: auto;
+  line-height: 1.55;
+}
+
+a { color: var(--link); text-decoration: none; }
+a:hover { color: var(--link-hover); text-decoration: underline; text-underline-offset: 3px; }
+
+hr { border: 0; border-top: 1px solid var(--border); margin: 2rem 0; }
