@@ -7,6 +7,7 @@ import {
   type CSSProperties,
 } from 'react';
 import { Composer } from './components/Composer';
+import { DocSwitcher } from './components/DocSwitcher';
 import { Editor, type EditorHandle } from './components/Editor';
 import {
   IconBold,
@@ -21,13 +22,25 @@ import { SettingsModal } from './components/SettingsModal';
 import { ShareModal } from './components/ShareModal';
 import { Thread } from './components/Thread';
 import {
+  clearCurrentId,
+  createDoc,
+  deleteDoc,
+  getCurrentId,
+  getDoc,
+  listDocs,
+  saveDoc,
+  setCurrentId as persistCurrentId,
+  type DocMeta,
+  type StoredDoc,
+} from './lib/doc-store';
+import {
   ACCENT_MAP,
   DEFAULT_SETTINGS,
   EDITOR_WIDTHS,
   PROSE_FONT_MAP,
   PROSE_SIZES,
 } from './lib/settings-config';
-import { decodeUrl, encodeUrl } from './lib/url-codec';
+import { decodeUrl } from './lib/url-codec';
 import type {
   CommentThread,
   ComposerState,
@@ -125,7 +138,7 @@ export default function App() {
 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [title, setTitle] = useState('Untitled document');
-  const [markdown, setMarkdown] = useState(SAMPLE_MD);
+  const [markdown, setMarkdown] = useState('');
   const [comments, setComments] = useState<CommentThread[]>([]);
   const [activeAnchorId, setActiveAnchorId] = useState<string | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
@@ -137,6 +150,9 @@ export default function App() {
   const [toast, setToast] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<'saved' | 'saving'>('saved');
   const [readOnly, setReadOnly] = useState(false);
+  const [currentId, setCurrentIdState] = useState<string | null>(null);
+  const [docs, setDocs] = useState<DocMeta[]>([]);
+  const [bootstrapped, setBootstrapped] = useState(false);
 
   const editorRef = useRef<EditorHandle>(null);
   const editorWrapRef = useRef<HTMLDivElement>(null);
@@ -147,32 +163,61 @@ export default function App() {
     setTimeout(() => setToast(null), 2000);
   }, []);
 
-  // Load from URL on mount
-  useEffect(() => {
-    const hash = window.location.hash;
-    if (!hash || hash.length < 3) return;
-    (async () => {
-      const res = await decodeUrl(hash);
-      if (res.encrypted) {
-        setPwPrompt({ hash, error: null });
-        setReadOnly(true);
-        return;
-      }
-      if (res.state) {
-        applyState(res.state);
-        setReadOnly(true);
-      } else if (res.error) {
-        showToast('Could not load link: ' + res.error);
-      }
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  const refreshDocs = useCallback(() => setDocs(listDocs()), []);
+
+  const applyState = useCallback((state: DocState) => {
+    setTitle(state.title || 'Untitled document');
+    setMarkdown(typeof state.md === 'string' ? state.md : '');
+    setComments(Array.isArray(state.comments) ? state.comments : []);
+    setActiveAnchorId(null);
   }, []);
 
-  function applyState(state: DocState) {
-    if (state.title) setTitle(state.title);
-    if (typeof state.md === 'string') setMarkdown(state.md);
-    if (Array.isArray(state.comments)) setComments(state.comments);
-  }
+  const adoptDoc = useCallback(
+    (doc: StoredDoc) => {
+      persistCurrentId(doc.id);
+      setCurrentIdState(doc.id);
+      setReadOnly(false);
+      applyState({ md: doc.md, comments: doc.comments, title: doc.title });
+    },
+    [applyState]
+  );
+
+  // Bootstrap: load from URL hash if present (read-only), otherwise from doc-store
+  useEffect(() => {
+    const hash = window.location.hash;
+    if (hash && hash.length > 2) {
+      // Clear the URL immediately so the encoded blob isn't visible in the address bar
+      history.replaceState(null, '', window.location.pathname);
+      (async () => {
+        const res = await decodeUrl(hash);
+        if (res.encrypted) {
+          setPwPrompt({ hash, error: null });
+          setReadOnly(true);
+          refreshDocs();
+          setBootstrapped(true);
+          return;
+        }
+        if (res.state) {
+          applyState(res.state);
+          setReadOnly(true);
+        } else if (res.error) {
+          showToast('Could not load link: ' + res.error);
+        }
+        refreshDocs();
+        setBootstrapped(true);
+      })();
+      return;
+    }
+    const id = getCurrentId();
+    let doc = id ? getDoc(id) : null;
+    if (!doc) {
+      doc = createDoc({ md: SAMPLE_MD });
+    }
+    adoptDoc(doc);
+    refreshDocs();
+    setBootstrapped(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const onUnlock = async (pw: string) => {
     if (!pwPrompt) return;
@@ -186,25 +231,87 @@ export default function App() {
     }
   };
 
-  // Sync to URL (debounced, plain only)
-  const isEncryptedView =
-    pwPrompt !== null || (window.location.hash || '').startsWith('#e=');
+  // Debounced auto-save to localStorage (only when bound to a local doc)
   useEffect(() => {
-    if (pwPrompt) return;
-    if (isEncryptedView && readOnly) return;
+    if (!bootstrapped) return;
+    if (readOnly) return;
+    if (!currentId) return;
     setSaveState('saving');
-    const handle = setTimeout(async () => {
-      const state: DocState = { md: markdown, comments, title };
-      try {
-        const hash = await encodeUrl(state, null);
-        history.replaceState(null, '', window.location.pathname + hash);
-        setSaveState('saved');
-      } catch {
-        setSaveState('saved');
-      }
-    }, 500);
+    const handle = setTimeout(() => {
+      const now = Date.now();
+      const existing = getDoc(currentId);
+      saveDoc({
+        id: currentId,
+        title,
+        md: markdown,
+        comments,
+        createdAt: existing?.createdAt ?? now,
+        updatedAt: now,
+      });
+      setSaveState('saved');
+      refreshDocs();
+    }, 400);
     return () => clearTimeout(handle);
-  }, [markdown, comments, title, pwPrompt, isEncryptedView, readOnly]);
+  }, [markdown, comments, title, readOnly, currentId, bootstrapped, refreshDocs]);
+
+  function flushSave() {
+    if (readOnly || !currentId) return;
+    const now = Date.now();
+    const existing = getDoc(currentId);
+    saveDoc({
+      id: currentId,
+      title,
+      md: markdown,
+      comments,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+    });
+  }
+
+  const handleSwitchDoc = (id: string) => {
+    if (id === currentId) return;
+    const doc = getDoc(id);
+    if (!doc) {
+      showToast('Document no longer exists');
+      refreshDocs();
+      return;
+    }
+    flushSave();
+    adoptDoc(doc);
+    refreshDocs();
+  };
+
+  const handleNewDoc = () => {
+    flushSave();
+    const doc = createDoc({ md: '' });
+    adoptDoc(doc);
+    refreshDocs();
+  };
+
+  const handleDeleteDoc = (id: string) => {
+    deleteDoc(id);
+    if (id === currentId) {
+      const remaining = listDocs();
+      if (remaining.length > 0) {
+        const next = getDoc(remaining[0].id);
+        if (next) {
+          adoptDoc(next);
+          refreshDocs();
+          return;
+        }
+      }
+      const fresh = createDoc({ md: SAMPLE_MD });
+      adoptDoc(fresh);
+    }
+    refreshDocs();
+  };
+
+  const handleEditShared = () => {
+    const doc = createDoc({ title, md: markdown, comments });
+    adoptDoc(doc);
+    refreshDocs();
+    showToast('Saved as a local document — your edits stay on this device');
+  };
 
   // Anchor positions
   const [anchorPositions, setAnchorPositions] = useState<Record<string, number | null>>({});
@@ -348,6 +455,8 @@ export default function App() {
     '--editor-width': EDITOR_WIDTHS[settings.editorWidth] || EDITOR_WIDTHS.default,
   };
 
+  const saveLabel = readOnly ? '● shared view' : saveState === 'saving' ? '● saving' : '● saved';
+
   return (
     <div className="app">
       <header className="topbar">
@@ -355,12 +464,15 @@ export default function App() {
           <div className="brand-mark">F</div>
           <span>Foil</span>
         </div>
-        <input
-          className="doc-title"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder="Untitled document"
-          disabled={readOnly}
+        <DocSwitcher
+          title={title}
+          onTitleChange={setTitle}
+          docs={docs}
+          currentId={currentId}
+          onSwitch={handleSwitchDoc}
+          onDelete={handleDeleteDoc}
+          onNew={handleNewDoc}
+          readOnly={readOnly}
         />
         {readOnly && (
           <span className="viewing-chip">
@@ -369,10 +481,7 @@ export default function App() {
             <button
               className="btn"
               style={{ padding: '0 6px', fontSize: 11, color: 'inherit' }}
-              onClick={() => {
-                setReadOnly(false);
-                showToast('Editing enabled — your changes update the URL');
-              }}
+              onClick={handleEditShared}
             >
               Edit anyway
             </button>
@@ -560,8 +669,17 @@ export default function App() {
           onSubmit={onUnlock}
           onCancel={() => {
             setPwPrompt(null);
-            history.replaceState(null, '', window.location.pathname);
-            setReadOnly(false);
+            // Fall back to current local doc, or create a fresh one
+            const id = getCurrentId();
+            const doc = id ? getDoc(id) : null;
+            if (doc) {
+              adoptDoc(doc);
+            } else {
+              clearCurrentId();
+              const fresh = createDoc({ md: SAMPLE_MD });
+              adoptDoc(fresh);
+            }
+            refreshDocs();
           }}
         />
       )}
@@ -575,8 +693,8 @@ export default function App() {
         <span className="spacer" aria-hidden="true" />
         <div className="right">
           <span>Markdown</span>
-          <span className={'save-state ' + (saveState === 'saving' ? 'saving' : '')}>
-            {saveState === 'saving' ? '● saving' : '● in URL'}
+          <span className={'save-state ' + (saveState === 'saving' && !readOnly ? 'saving' : '')}>
+            {saveLabel}
           </span>
         </div>
       </div>
