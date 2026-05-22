@@ -123,18 +123,20 @@ export function TimeCapsuleUnlock({ envelope, onUnlocked, onCancel }: Props) {
             Cancel
           </button>
           <div className="spacer" />
-          <button
-            type="button"
-            className="btn btn-primary"
-            disabled={phase === 'locked' || phase === 'unlocking'}
-            onClick={attemptUnlock}
-          >
-            {phase === 'unlocking'
-              ? 'Decrypting…'
-              : phase === 'error'
-                ? 'Retry'
-                : 'Decrypt'}
-          </button>
+          {phase !== 'locked' && (
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={phase === 'unlocking'}
+              onClick={attemptUnlock}
+            >
+              {phase === 'unlocking'
+                ? 'Decrypting…'
+                : phase === 'error'
+                  ? 'Retry'
+                  : 'Decrypt'}
+            </button>
+          )}
         </div>
       </div>
     </div>
