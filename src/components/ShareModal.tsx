@@ -9,6 +9,7 @@ interface Props {
   onClose: () => void;
   getState: () => DocState;
   onToast: (msg: string) => void;
+  onLearnMore: () => void;
 }
 
 type Preset = '1h' | '1d' | '1mo' | '1y' | 'custom';
@@ -54,7 +55,7 @@ function toLocalInput(ms: number): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-export function ShareModal({ open, onClose, getState, onToast }: Props) {
+export function ShareModal({ open, onClose, getState, onToast, onLearnMore }: Props) {
   const [usePassword, setUsePassword] = useState(false);
   const [useTimelock, setUseTimelock] = useState(false);
   const [password, setPassword] = useState('');
@@ -188,7 +189,12 @@ export function ShareModal({ open, onClose, getState, onToast }: Props) {
             />
             <div className="label-stack">
               <b>Require a password</b>
-              <span>AES-GCM 256, PBKDF2 200k rounds. Recipients need this password to open.</span>
+              <span>
+                Encrypts the link so only people you give the password to can open it.{' '}
+                <button type="button" className="learn-more-link" onClick={onLearnMore}>
+                  Learn more
+                </button>
+              </span>
             </div>
           </div>
           {usePassword && (
@@ -221,8 +227,11 @@ export function ShareModal({ open, onClose, getState, onToast }: Props) {
             <div className="label-stack">
               <b>Time-lock until a future date</b>
               <span>
-                No one — not even you — can decrypt until the unlock time. After that, anyone with
-                the link can read it.
+                Seals the link until a date you pick. No one — not even you — can open it before
+                then.{' '}
+                <button type="button" className="learn-more-link" onClick={onLearnMore}>
+                  Learn more
+                </button>
               </span>
             </div>
           </div>

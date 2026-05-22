@@ -727,14 +727,15 @@ export default function App() {
         onReset={() => setSettings({ ...DEFAULT_SETTINGS })}
       />
 
-      <HelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
-
       <ShareModal
         open={shareOpen}
         onClose={() => setShareOpen(false)}
         getState={getState}
         onToast={showToast}
+        onLearnMore={() => setHelpOpen(true)}
       />
+
+      <HelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
 
       <div className="statusbar">
         <span>{stats.words.toLocaleString()} words</span>
