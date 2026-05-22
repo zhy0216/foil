@@ -289,7 +289,7 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(prop
           a.id
         );
       } catch {
-        /* multi-block anchors skipped */
+        /* skip if range can't be resolved */
       }
     });
   }, [anchors, activeAnchorId]);

@@ -171,8 +171,9 @@ export function wrapRangeInEditor(
   function wrapSegment(node: Text, from: number, to: number): void {
     if (from >= to) return;
     const t = node.textContent ?? '';
-    const before = t.slice(0, from);
     const middle = t.slice(from, to);
+    if (middle.replace(ZWSP_RE, '') === '') return;
+    const before = t.slice(0, from);
     const after = t.slice(to);
     const span = document.createElement('span');
     span.className = cls;
@@ -194,23 +195,36 @@ export function wrapRangeInEditor(
   }
   const blockA = blockOf(a.node);
   const blockB = blockOf(b.node);
-  if (!blockA || blockA !== blockB) return;
-  const walker = document.createTreeWalker(blockA, NodeFilter.SHOW_TEXT);
+  if (!blockA || !blockB) return;
+  const blockArr = Array.from(blocks);
+  const ia = blockArr.indexOf(blockA);
+  const ib = blockArr.indexOf(blockB);
+  if (ia < 0 || ib < 0 || ia > ib) return;
+
   const segments: Array<{ node: Text; from: number; to: number }> = [];
-  let node: Text | null;
-  let started = false;
-  while ((node = walker.nextNode() as Text | null)) {
-    if (node === a.node) {
-      started = true;
-      segments.push({ node, from: a.off, to: (node.textContent ?? '').length });
-      continue;
+  for (let i = ia; i <= ib; i++) {
+    const block = blockArr[i];
+    const isFirst = i === ia;
+    const isLast = i === ib;
+    const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
+    let node: Text | null;
+    let started = !isFirst;
+    while ((node = walker.nextNode() as Text | null)) {
+      const len = (node.textContent ?? '').length;
+      if (!started) {
+        if (node !== a.node) continue;
+        started = true;
+        const to = isLast && node === b.node ? b.off : len;
+        segments.push({ node, from: a.off, to });
+        if (isLast && node === b.node) break;
+        continue;
+      }
+      if (isLast && node === b.node) {
+        segments.push({ node, from: 0, to: b.off });
+        break;
+      }
+      segments.push({ node, from: 0, to: len });
     }
-    if (!started) continue;
-    if (node === b.node) {
-      segments.push({ node, from: 0, to: b.off });
-      break;
-    }
-    segments.push({ node, from: 0, to: (node.textContent ?? '').length });
   }
   for (const seg of segments) wrapSegment(seg.node, seg.from, seg.to);
 }
