@@ -939,6 +939,11 @@ input, textarea { font: inherit; color: inherit; }
 .statusbar .right { display: flex; align-items: center; gap: 14px; white-space: nowrap; }
 .statusbar .save-state { color: var(--accent-hi); }
 .statusbar .save-state.saving { color: var(--fg-subtle); }
+.statusbar .github-link,
+.statusbar .help-link { display: inline-flex; align-items: center; color: inherit; opacity: 0.75; transition: opacity 0.15s; }
+.statusbar .github-link:hover,
+.statusbar .help-link:hover { opacity: 1; }
+.statusbar .help-link { background: none; border: 0; padding: 0; cursor: pointer; font: inherit; }
 
 /* ---------- Floating help ---------- */
 .help-pill {
@@ -990,6 +995,28 @@ input, textarea { font: inherit; color: inherit; }
   margin-bottom: 4px;
 }
 .settings-head h3 { margin: 0; }
+
+.help-text {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  color: var(--fg-muted);
+}
+.help-text code {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  padding: 1px 5px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--fg);
+}
+.help-text a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.help-text strong { color: var(--fg); font-weight: 600; }
 
 .settings-section {
   margin-top: 18px;

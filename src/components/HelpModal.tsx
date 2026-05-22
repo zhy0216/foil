@@ -1,0 +1,99 @@
+import { IconClose } from './Icons';
+
+interface Props {
+  open: boolean;
+  onClose: () => void;
+}
+
+export function HelpModal({ open, onClose }: Props) {
+  if (!open) return null;
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal settings-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="settings-head">
+          <h3>About Foil</h3>
+          <button className="btn btn-icon" onClick={onClose} title="Close" aria-label="Close">
+            <IconClose />
+          </button>
+        </div>
+        <p className="modal-sub">
+          A markdown editor that lives entirely in your browser — and how it keeps what you share private.
+        </p>
+
+        <div className="settings-section">
+          <div className="settings-label">What Foil is</div>
+          <p className="help-text">
+            Foil is a markdown editor that runs entirely in your browser. There is no backend, no
+            database, and no accounts. The static HTML and JavaScript you loaded is the whole app.
+          </p>
+        </div>
+
+        <div className="settings-section">
+          <div className="settings-label">Where your data lives</div>
+          <p className="help-text">
+            Each document is a JSON blob in <code>localStorage</code> under{' '}
+            <code>foil_doc_&lt;id&gt;</code>. Your theme, font, and display name stay local too.
+            Clearing site data wipes everything. Nothing you type is sent anywhere.
+          </p>
+        </div>
+
+        <div className="settings-section">
+          <div className="settings-label">How sharing works</div>
+          <p className="help-text">
+            When you share a doc, Foil gzips it, base64url-encodes it, and writes the result after{' '}
+            <code>#</code> in the URL — for example <code>foil.example/#d=H4sIAAA…</code>. Browsers,
+            by design, never send the part after <code>#</code> to servers, so the host that serves
+            Foil cannot see what you shared. When a recipient opens the link, Foil decodes the
+            fragment and immediately strips it from the address bar.
+          </p>
+        </div>
+
+        <div className="settings-section">
+          <div className="settings-label">Password encryption</div>
+          <p className="help-text">
+            A password-protected link (<code>#e=</code>) is encrypted with AES-GCM-256. The key is
+            derived from your password using PBKDF2-SHA256 with <strong>200,000 rounds</strong>,
+            with a random salt and IV per share. Only the ciphertext, salt, and IV end up in the
+            URL — never the password itself.
+          </p>
+        </div>
+
+        <div className="settings-section">
+          <div className="settings-label">Time capsule</div>
+          <p className="help-text">
+            A time capsule link (<code>#td=</code>) uses{' '}
+            <a href="https://drand.love" target="_blank" rel="noopener noreferrer">
+              drand
+            </a>{' '}
+            quicknet's tlock. drand publishes a fresh BLS signature every 3 seconds, but the
+            signature needed to decrypt your capsule does not yet exist on the network — it will
+            only be published at the unlock time you chose. <code>#te=</code> adds a password
+            layer on top, so the recipient needs both the time <em>and</em> the password.
+          </p>
+        </div>
+
+        <div className="settings-section">
+          <div className="settings-label">Learn more</div>
+          <p className="help-text">
+            Full details, threat model, and source live in the{' '}
+            <a
+              href="https://github.com/zhy0216/foil#readme"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              README on GitHub
+            </a>
+            .
+          </p>
+        </div>
+
+        <div className="modal-actions">
+          <div className="spacer" />
+          <button className="btn btn-ghost-bordered" onClick={onClose}>
+            Done
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
