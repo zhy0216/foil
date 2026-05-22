@@ -82,8 +82,8 @@ export function TimeCapsuleUnlock({ envelope, onUnlocked, onCancel }: Props) {
   }
 
   return (
-    <div className="modal-backdrop" onClick={onCancel}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+    <div className="modal-backdrop">
+      <div className="modal">
         <h3>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
             <IconClock /> Time capsule

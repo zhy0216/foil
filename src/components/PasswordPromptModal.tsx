@@ -9,8 +9,8 @@ interface Props {
 export function PasswordPromptModal({ error, onSubmit, onCancel }: Props) {
   const [pw, setPw] = useState('');
   return (
-    <div className="modal-backdrop" onClick={onCancel}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+    <div className="modal-backdrop">
+      <div className="modal">
         <h3>This document is encrypted</h3>
         <p className="modal-sub">Enter the password to read it.</p>
         <form

@@ -472,9 +472,31 @@ export default function App() {
 
   const saveLabel = readOnly ? '● shared view' : saveState === 'saving' ? '● saving' : '● saved';
 
-  // While a time capsule is awaiting unlock, render only the modal — the empty
-  // editor frame and "Untitled document" chrome behind it just confuses readers
-  // who arrived via a sealed link.
+  // While a password prompt or time capsule is awaiting unlock, render only
+  // the modal — the empty editor frame and "Untitled document" chrome behind
+  // it just confuses readers who arrived via a sealed link.
+  if (pwPrompt) {
+    return (
+      <PasswordPromptModal
+        error={pwPrompt.error}
+        onSubmit={onUnlock}
+        onCancel={() => {
+          setPwPrompt(null);
+          const id = getCurrentId();
+          const doc = id ? getDoc(id) : null;
+          if (doc) {
+            adoptDoc(doc);
+          } else {
+            clearCurrentId();
+            const fresh = createDoc({ md: SAMPLE_MD });
+            adoptDoc(fresh);
+          }
+          refreshDocs();
+        }}
+      />
+    );
+  }
+
   if (tcEnvelope) {
     return (
       <TimeCapsuleUnlock
@@ -708,27 +730,6 @@ export default function App() {
         getState={getState}
         onToast={showToast}
       />
-
-      {pwPrompt && (
-        <PasswordPromptModal
-          error={pwPrompt.error}
-          onSubmit={onUnlock}
-          onCancel={() => {
-            setPwPrompt(null);
-            // Fall back to current local doc, or create a fresh one
-            const id = getCurrentId();
-            const doc = id ? getDoc(id) : null;
-            if (doc) {
-              adoptDoc(doc);
-            } else {
-              clearCurrentId();
-              const fresh = createDoc({ md: SAMPLE_MD });
-              adoptDoc(fresh);
-            }
-            refreshDocs();
-          }}
-        />
-      )}
 
       <div className="statusbar">
         <span>{stats.words.toLocaleString()} words</span>
