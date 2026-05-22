@@ -1,6 +1,21 @@
-/* URL packing + optional password encryption.
-   PBKDF2(SHA-256, 200000) + AES-GCM-256, gzipped via CompressionStream. */
+/* URL packing.
 
+   Four schemes:
+     #d=  plain         — gzipped DocState JSON, base64url
+     #e=  password      — AES-GCM over gzip(DocState JSON)
+     #td= time capsule  — tlock-encrypted gzip(DocState JSON), wrapped in an envelope
+     #te= time + pass   — AES-GCM over the same envelope as #td=
+
+   Password layer is always outermost so it can hide whether-it's-a-capsule and
+   the unlock round from anyone without the password.
+*/
+
+import {
+  timelockEncrypt,
+  timelockDecrypt,
+  roundAtUnix,
+  unixMsAtRound,
+} from './timecapsule';
 import type { DocState } from '../types';
 
 const enc = new TextEncoder();
@@ -58,73 +73,141 @@ async function deriveKey(password: string, salt: Uint8Array): Promise<CryptoKey>
   );
 }
 
-async function encryptBytes(plaintext: Uint8Array, password: string): Promise<string> {
+async function encryptBytes(plaintext: Uint8Array, password: string): Promise<Uint8Array> {
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const key = await deriveKey(password, salt);
   const ct = new Uint8Array(
-    await crypto.subtle.encrypt({ name: 'AES-GCM', iv: iv as BufferSource }, key, plaintext as BufferSource)
+    await crypto.subtle.encrypt(
+      { name: 'AES-GCM', iv: iv as BufferSource },
+      key,
+      plaintext as BufferSource
+    )
   );
   const out = new Uint8Array(salt.length + iv.length + ct.length);
   out.set(salt, 0);
   out.set(iv, salt.length);
   out.set(ct, salt.length + iv.length);
-  return bytesToB64u(out);
+  return out;
 }
 
-async function decryptBytes(b64u: string, password: string): Promise<Uint8Array> {
-  const all = b64uToBytes(b64u);
-  const salt = all.slice(0, 16);
-  const iv = all.slice(16, 28);
-  const ct = all.slice(28);
+async function decryptBytes(payload: Uint8Array, password: string): Promise<Uint8Array> {
+  const salt = payload.slice(0, 16);
+  const iv = payload.slice(16, 28);
+  const ct = payload.slice(28);
   const key = await deriveKey(password, salt);
   const pt = new Uint8Array(
-    await crypto.subtle.decrypt({ name: 'AES-GCM', iv: iv as BufferSource }, key, ct as BufferSource)
+    await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv: iv as BufferSource },
+      key,
+      ct as BufferSource
+    )
   );
   return pt;
 }
 
-export async function encodeUrl(
-  state: DocState,
-  password: string | null
-): Promise<string> {
+/** Inner envelope for time-locked URLs (#td= and, after pw-decryption, #te=). */
+export interface TimeCapsuleEnvelope {
+  v: 1;
+  age: string; // age-armored tlock ciphertext of gzip(DocState JSON)
+  round: number;
+  unlockMs: number;
+}
+
+function isEnvelope(x: unknown): x is TimeCapsuleEnvelope {
+  if (!x || typeof x !== 'object') return false;
+  const o = x as Record<string, unknown>;
+  return (
+    o.v === 1 &&
+    typeof o.age === 'string' &&
+    typeof o.round === 'number' &&
+    typeof o.unlockMs === 'number'
+  );
+}
+
+async function buildEnvelope(state: DocState, unlockMs: number): Promise<TimeCapsuleEnvelope> {
+  const round = roundAtUnix(unlockMs);
   const json = JSON.stringify(state);
   const compressed = await gzip(json);
+  const age = await timelockEncrypt(compressed, round);
+  return { v: 1, age, round, unlockMs: unixMsAtRound(round) };
+}
+
+/** Build a shareable URL hash. */
+export async function encodeUrl(
+  state: DocState,
+  opts: { password?: string | null; unlockMs?: number | null } = {}
+): Promise<string> {
+  const { password, unlockMs } = opts;
+
+  if (unlockMs && unlockMs > Date.now()) {
+    const env = await buildEnvelope(state, unlockMs);
+    const envJson = JSON.stringify(env);
+    if (password) {
+      const ct = await encryptBytes(await gzip(envJson), password);
+      return '#te=' + bytesToB64u(ct);
+    }
+    return '#td=' + bytesToB64u(await gzip(envJson));
+  }
+
+  const compressed = await gzip(JSON.stringify(state));
   if (password) {
-    const enc64 = await encryptBytes(compressed, password);
-    return '#e=' + enc64;
+    const ct = await encryptBytes(compressed, password);
+    return '#e=' + bytesToB64u(ct);
   }
   return '#d=' + bytesToB64u(compressed);
 }
 
 export interface DecodeResult {
   state?: DocState;
-  encrypted?: boolean;
+  encrypted?: 'password' | 'time-password';
+  timeCapsule?: TimeCapsuleEnvelope;
   error?: string;
 }
 
-export async function decodeUrl(
-  hash: string,
-  password?: string
-): Promise<DecodeResult> {
+export async function decodeUrl(hash: string, password?: string): Promise<DecodeResult> {
   if (!hash || hash.length < 2) return {};
   const cleaned = hash.startsWith('#') ? hash.slice(1) : hash;
-  const [k, v] = cleaned.split('=');
+  const eq = cleaned.indexOf('=');
+  if (eq <= 0) return {};
+  const k = cleaned.slice(0, eq);
+  const v = cleaned.slice(eq + 1);
   if (!v) return {};
+
   try {
     if (k === 'd') {
-      const bytes = b64uToBytes(v);
-      const out = await gunzip(bytes);
+      const out = await gunzip(b64uToBytes(v));
       return { state: JSON.parse(dec.decode(out)) as DocState };
     }
     if (k === 'e') {
-      if (!password) return { encrypted: true };
-      const bytes = await decryptBytes(v, password);
-      const out = await gunzip(bytes);
+      if (!password) return { encrypted: 'password' };
+      const pt = await decryptBytes(b64uToBytes(v), password);
+      const out = await gunzip(pt);
       return { state: JSON.parse(dec.decode(out)) as DocState };
+    }
+    if (k === 'td') {
+      const out = await gunzip(b64uToBytes(v));
+      const env = JSON.parse(dec.decode(out));
+      if (!isEnvelope(env)) return { error: 'Invalid time-capsule envelope' };
+      return { timeCapsule: env };
+    }
+    if (k === 'te') {
+      if (!password) return { encrypted: 'time-password' };
+      const pt = await decryptBytes(b64uToBytes(v), password);
+      const out = await gunzip(pt);
+      const env = JSON.parse(dec.decode(out));
+      if (!isEnvelope(env)) return { error: 'Invalid time-capsule envelope' };
+      return { timeCapsule: env };
     }
   } catch (e) {
     return { error: e instanceof Error ? e.message : String(e) };
   }
   return {};
+}
+
+/** Decrypt a time-capsule envelope's payload after the unlock round has published. */
+export async function openTimeCapsule(env: TimeCapsuleEnvelope): Promise<DocState> {
+  const compressed = await timelockDecrypt(env.age);
+  const out = await gunzip(compressed);
+  return JSON.parse(dec.decode(out)) as DocState;
 }

@@ -21,6 +21,7 @@ import { PasswordPromptModal } from './components/PasswordPromptModal';
 import { SettingsModal } from './components/SettingsModal';
 import { ShareModal } from './components/ShareModal';
 import { Thread } from './components/Thread';
+import { TimeCapsuleUnlock } from './components/TimeCapsuleUnlock';
 import {
   clearCurrentId,
   createDoc,
@@ -40,7 +41,7 @@ import {
   PROSE_FONT_MAP,
   PROSE_SIZES,
 } from './lib/settings-config';
-import { decodeUrl } from './lib/url-codec';
+import { decodeUrl, type TimeCapsuleEnvelope } from './lib/url-codec';
 import type {
   CommentThread,
   ComposerState,
@@ -145,6 +146,7 @@ export default function App() {
   const [pwPrompt, setPwPrompt] = useState<{ hash: string; error: string | null } | null>(
     null
   );
+  const [tcEnvelope, setTcEnvelope] = useState<TimeCapsuleEnvelope | null>(null);
   const [composer, setComposer] = useState<ComposerState | null>(null);
   const [selection, setSelection] = useState<SelectionInfo | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -197,6 +199,13 @@ export default function App() {
           setBootstrapped(true);
           return;
         }
+        if (res.timeCapsule) {
+          setTcEnvelope(res.timeCapsule);
+          setReadOnly(true);
+          refreshDocs();
+          setBootstrapped(true);
+          return;
+        }
         if (res.state) {
           applyState(res.state);
           setReadOnly(true);
@@ -222,6 +231,12 @@ export default function App() {
   const onUnlock = async (pw: string) => {
     if (!pwPrompt) return;
     const res = await decodeUrl(pwPrompt.hash, pw);
+    if (res.timeCapsule) {
+      // #te=: outer password peeled, inner is a time capsule.
+      setTcEnvelope(res.timeCapsule);
+      setPwPrompt(null);
+      return;
+    }
     if (res.state) {
       applyState(res.state);
       setPwPrompt(null);
@@ -477,7 +492,9 @@ export default function App() {
         {readOnly && (
           <span className="viewing-chip">
             <span className="dot" />
-            Viewing shared {pwPrompt ? 'encrypted ' : ''}link
+            {tcEnvelope
+              ? 'Viewing time capsule'
+              : `Viewing shared ${pwPrompt ? 'encrypted ' : ''}link`}
             <button
               className="btn"
               style={{ padding: '0 6px', fontSize: 11, color: 'inherit' }}
@@ -670,6 +687,30 @@ export default function App() {
           onCancel={() => {
             setPwPrompt(null);
             // Fall back to current local doc, or create a fresh one
+            const id = getCurrentId();
+            const doc = id ? getDoc(id) : null;
+            if (doc) {
+              adoptDoc(doc);
+            } else {
+              clearCurrentId();
+              const fresh = createDoc({ md: SAMPLE_MD });
+              adoptDoc(fresh);
+            }
+            refreshDocs();
+          }}
+        />
+      )}
+
+      {tcEnvelope && (
+        <TimeCapsuleUnlock
+          envelope={tcEnvelope}
+          onUnlocked={(state) => {
+            applyState(state);
+            setTcEnvelope(null);
+            showToast('Time capsule unsealed');
+          }}
+          onCancel={() => {
+            setTcEnvelope(null);
             const id = getCurrentId();
             const doc = id ? getDoc(id) : null;
             if (doc) {
