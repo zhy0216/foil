@@ -62,6 +62,7 @@ A small markdown editor that lives entirely in your browser. **Type to format**,
 - Live styling — no separate preview pane
 - Share links carry the entire document; nothing is sent to a server
 - Optional **password** before you share → AES-GCM, 200k PBKDF2 rounds
+- **Time capsule** — lock a link until a future moment. Nobody, not even you, can read it before the unlock time (powered by [drand](https://drand.love) tlock).
 - Highlight any text and **leave a comment**. Comments travel with the link.
 
 ## Markdown that works
