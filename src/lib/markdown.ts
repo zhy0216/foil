@@ -98,12 +98,9 @@ function classifyLine(line: string, inFence: number | null): LineInfo {
       cls: 'list',
       inline:
         '<span class="syn syn-bullet">' +
-        escapeHtml(m[1]) +
-        '• </span>' +
-        inlineHtml(m[3]) +
-        '<span class="syn" style="display:none">' +
-        m[2] +
-        ' </span>',
+        escapeHtml(m[1] + m[2] + ' ') +
+        '</span>' +
+        inlineHtml(m[3]),
     };
   }
   if ((m = line.match(/^(\s*)(\d+)([.)])\s+(.*)$/))) {

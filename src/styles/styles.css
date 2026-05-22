@@ -393,10 +393,17 @@ input, textarea { font: inherit; color: inherit; }
   padding-left: 4px;
 }
 .editor .ln.list .syn-bullet {
-  color: var(--accent);
+  color: transparent;
   font-weight: 600;
   display: inline-block;
   width: 1.2em;
+  position: relative;
+}
+.editor .ln.list .syn-bullet::before {
+  content: "•";
+  position: absolute;
+  inset-inline-start: 0;
+  color: var(--accent);
 }
 .editor .ln.task .syn-task {
   color: var(--accent);
