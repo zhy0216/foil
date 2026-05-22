@@ -782,35 +782,31 @@ input, textarea { font: inherit; color: inherit; }
   color: var(--fg-subtle);
 }
 
-/* ---------- Share modal: mode segmented + time-lock presets ---------- */
-.seg-group {
-  display: inline-flex;
-  padding: 3px;
-  background: var(--bg-inset);
+/* ---------- Share modal: option rows + time-lock presets ---------- */
+.share-option {
+  padding: 10px 12px;
+  background: var(--bg-raised);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  gap: 2px;
-  margin: 4px 0 12px;
+  margin-top: 10px;
 }
-.seg-btn {
-  padding: 6px 14px;
-  font-size: var(--text-xs);
-  border-radius: calc(var(--radius-md) - 4px);
-  color: var(--fg-muted);
-  transition: background 120ms ease, color 120ms ease;
+.share-option-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
 }
-.seg-btn:hover { color: var(--fg); }
-.seg-btn.on {
-  background: var(--bg);
-  color: var(--fg);
-  box-shadow: var(--shadow-sm);
+.share-option-head .toggle { margin-top: 2px; }
+.share-option-head .label-stack { flex: 1; }
+.share-option-head .label-stack b {
+  display: block;
+  font-weight: 500;
+  font-size: var(--text-sm);
 }
-
-.mode-help {
+.share-option-head .label-stack span {
+  display: block;
   font-size: var(--text-xs);
   color: var(--fg-subtle);
-  margin: 4px 0 8px;
-  line-height: 1.5;
+  margin-top: 2px;
 }
 
 .preset-row {
@@ -849,28 +845,6 @@ input, textarea { font: inherit; color: inherit; }
   font-size: var(--text-xs);
   color: var(--fg-subtle);
   font-variant-numeric: tabular-nums;
-}
-
-.modal .modal-sub-toggle {
-  display: flex; align-items: flex-start; gap: 10px;
-  padding: 10px 12px;
-  background: var(--bg-raised);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  margin-top: 12px;
-}
-.modal .modal-sub-toggle .toggle { margin-top: 2px; }
-.modal .modal-sub-toggle .label-stack { flex: 1; }
-.modal .modal-sub-toggle .label-stack b {
-  display: block;
-  font-weight: 500;
-  font-size: var(--text-sm);
-}
-.modal .modal-sub-toggle .label-stack span {
-  display: block;
-  font-size: var(--text-xs);
-  color: var(--fg-subtle);
-  margin-top: 2px;
 }
 
 .modal input[type="datetime-local"] {

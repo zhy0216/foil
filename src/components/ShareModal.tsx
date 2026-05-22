@@ -11,7 +11,6 @@ interface Props {
   onToast: (msg: string) => void;
 }
 
-type Mode = 'plain' | 'password' | 'time';
 type Preset = '1h' | '1d' | '1mo' | '1y' | 'custom';
 
 const PRESETS: { id: Preset; label: string; ms: number | null }[] = [
@@ -56,9 +55,9 @@ function toLocalInput(ms: number): string {
 }
 
 export function ShareModal({ open, onClose, getState, onToast }: Props) {
-  const [mode, setMode] = useState<Mode>('plain');
+  const [usePassword, setUsePassword] = useState(false);
+  const [useTimelock, setUseTimelock] = useState(false);
   const [password, setPassword] = useState('');
-  const [usePwOnTime, setUsePwOnTime] = useState(false);
   const [preset, setPreset] = useState<Preset>('1d');
   const [customLocal, setCustomLocal] = useState(() =>
     toLocalInput(Date.now() + 86_400_000)
@@ -70,22 +69,22 @@ export function ShareModal({ open, onClose, getState, onToast }: Props) {
   // Reset transient state every time the modal opens
   useEffect(() => {
     if (!open) return;
-    setMode('plain');
+    setUsePassword(false);
+    setUseTimelock(false);
     setPassword('');
-    setUsePwOnTime(false);
     setPreset('1d');
     setCustomLocal(toLocalInput(Date.now() + 86_400_000));
   }, [open]);
 
   const targetMs = useMemo(() => {
-    if (mode !== 'time') return null;
+    if (!useTimelock) return null;
     if (preset === 'custom') {
       const ms = new Date(customLocal).getTime();
       return Number.isFinite(ms) ? ms : null;
     }
     const ms = PRESETS.find((p) => p.id === preset)?.ms ?? null;
     return ms ? Date.now() + ms : null;
-  }, [mode, preset, customLocal]);
+  }, [useTimelock, preset, customLocal]);
 
   // The actual unlock moment is roundTime(round), which may be 0–3s after target.
   const unlockMs = useMemo(() => {
@@ -95,24 +94,14 @@ export function ShareModal({ open, onClose, getState, onToast }: Props) {
   }, [targetMs]);
   const round = unlockMs ? roundAtUnix(unlockMs) : null;
 
-  const passwordReady =
-    (mode === 'password' && password.length > 0) ||
-    (mode === 'time' && (!usePwOnTime || password.length > 0));
+  const passwordMissing = usePassword && !password;
+  const timelockMissing = useTimelock && !unlockMs;
+  const ready = !passwordMissing && !timelockMissing;
 
   // Build the URL whenever inputs settle.
   useEffect(() => {
     if (!open) return;
-    if (mode === 'password' && !password) {
-      setUrl('');
-      setSize(0);
-      return;
-    }
-    if (mode === 'time' && !unlockMs) {
-      setUrl('');
-      setSize(0);
-      return;
-    }
-    if (mode === 'time' && usePwOnTime && !password) {
+    if (!ready) {
       setUrl('');
       setSize(0);
       return;
@@ -124,11 +113,8 @@ export function ShareModal({ open, onClose, getState, onToast }: Props) {
       try {
         const state = getState();
         const opts: { password?: string | null; unlockMs?: number | null } = {};
-        if (mode === 'password') opts.password = password;
-        if (mode === 'time') {
-          opts.unlockMs = unlockMs!;
-          if (usePwOnTime) opts.password = password;
-        }
+        if (usePassword) opts.password = password;
+        if (useTimelock) opts.unlockMs = unlockMs!;
         const hash = await encodeUrl(state, opts);
         if (cancelled) return;
         const u = window.location.origin + window.location.pathname + hash;
@@ -143,22 +129,21 @@ export function ShareModal({ open, onClose, getState, onToast }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [open, mode, password, usePwOnTime, unlockMs, getState, onToast]);
+  }, [open, ready, usePassword, useTimelock, password, unlockMs, getState, onToast]);
 
   if (!open) return null;
 
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(url);
-      onToast(
-        mode === 'time'
-          ? usePwOnTime
-            ? 'Encrypted time capsule copied'
-            : 'Time capsule copied'
-          : mode === 'password'
-            ? 'Encrypted link copied'
-            : 'Link copied'
-      );
+      const toast = useTimelock
+        ? usePassword
+          ? 'Encrypted time capsule copied'
+          : 'Time capsule copied'
+        : usePassword
+          ? 'Encrypted link copied'
+          : 'Link copied';
+      onToast(toast);
       onClose();
     } catch {
       onToast("Couldn't copy — select the box and copy manually");
@@ -167,7 +152,15 @@ export function ShareModal({ open, onClose, getState, onToast }: Props) {
 
   const sizeKb = (size / 1024).toFixed(1);
   const tooBig = size > 8000;
-  const tooSoon = mode === 'time' && targetMs && targetMs <= Date.now() + 30_000;
+  const tooSoon = useTimelock && targetMs && targetMs <= Date.now() + 30_000;
+
+  const linkPlaceholder = busy
+    ? 'Building link…'
+    : passwordMissing
+      ? 'Enter a password…'
+      : timelockMissing
+        ? 'Pick an unlock time…'
+        : '';
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -178,158 +171,119 @@ export function ShareModal({ open, onClose, getState, onToast }: Props) {
           browser.
         </p>
 
-        <div className="seg-group" role="tablist">
-          <button
-            role="tab"
-            aria-selected={mode === 'plain'}
-            className={'seg-btn' + (mode === 'plain' ? ' on' : '')}
-            onClick={() => setMode('plain')}
-          >
-            Plain
-          </button>
-          <button
-            role="tab"
-            aria-selected={mode === 'password'}
-            className={'seg-btn' + (mode === 'password' ? ' on' : '')}
-            onClick={() => setMode('password')}
-          >
-            Password
-          </button>
-          <button
-            role="tab"
-            aria-selected={mode === 'time'}
-            className={'seg-btn' + (mode === 'time' ? ' on' : '')}
-            onClick={() => setMode('time')}
-          >
-            Time lock
-          </button>
-        </div>
-
-        {mode === 'plain' && (
-          <p className="mode-help">Anyone with the link can read it, immediately.</p>
-        )}
-
-        {mode === 'password' && (
-          <>
-            <p className="mode-help">
-              AES-GCM 256, PBKDF2 200k rounds. Anyone with the link will need this password.
-            </p>
-            <label>Password</label>
+        <div className="share-option">
+          <div className="share-option-head">
+            <div
+              className={'toggle' + (usePassword ? ' on' : '')}
+              role="switch"
+              aria-checked={usePassword}
+              tabIndex={0}
+              onClick={() => setUsePassword((v) => !v)}
+              onKeyDown={(e) => {
+                if (e.key === ' ' || e.key === 'Enter') {
+                  e.preventDefault();
+                  setUsePassword((v) => !v);
+                }
+              }}
+            />
+            <div className="label-stack">
+              <b>Require a password</b>
+              <span>AES-GCM 256, PBKDF2 200k rounds. Recipients need this password to open.</span>
+            </div>
+          </div>
+          {usePassword && (
             <input
               type="password"
               value={password}
               autoFocus
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Choose a password"
+              style={{ marginTop: 10 }}
             />
-          </>
-        )}
+          )}
+        </div>
 
-        {mode === 'time' && (
-          <>
-            <p className="mode-help">
-              No one — not even you — can decrypt until the unlock time. After that, anyone with
-              the link can read it.
-            </p>
-
-            <label>Unlock when</label>
-            <div className="preset-row">
-              {PRESETS.map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  className={'preset' + (preset === p.id ? ' on' : '')}
-                  onClick={() => setPreset(p.id)}
-                >
-                  {p.label}
-                </button>
-              ))}
+        <div className="share-option">
+          <div className="share-option-head">
+            <div
+              className={'toggle' + (useTimelock ? ' on' : '')}
+              role="switch"
+              aria-checked={useTimelock}
+              tabIndex={0}
+              onClick={() => setUseTimelock((v) => !v)}
+              onKeyDown={(e) => {
+                if (e.key === ' ' || e.key === 'Enter') {
+                  e.preventDefault();
+                  setUseTimelock((v) => !v);
+                }
+              }}
+            />
+            <div className="label-stack">
+              <b>Time-lock until a future date</b>
+              <span>
+                No one — not even you — can decrypt until the unlock time. After that, anyone with
+                the link can read it.
+              </span>
             </div>
+          </div>
 
-            {preset === 'custom' && (
-              <input
-                type="datetime-local"
-                value={customLocal}
-                min={toLocalInput(Date.now() + 60_000)}
-                onChange={(e) => setCustomLocal(e.target.value)}
-                style={{ marginTop: 8 }}
-              />
-            )}
-
-            {tooSoon && (
-              <div className="stat-row" style={{ color: 'var(--cerulean-400)' }}>
-                ⚠ Unlock time must be at least 30 seconds from now
+          {useTimelock && (
+            <>
+              <div className="preset-row" style={{ marginTop: 10 }}>
+                {PRESETS.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    className={'preset' + (preset === p.id ? ' on' : '')}
+                    onClick={() => setPreset(p.id)}
+                  >
+                    {p.label}
+                  </button>
+                ))}
               </div>
-            )}
 
-            {unlockMs && round && (
-              <div className="tc-readout">
-                <div>
-                  <b>Unlocks</b> {fmtDate(unlockMs)}
-                </div>
-                <div className="tc-readout-sub">
-                  in {fmtDuration(unlockMs - Date.now())} · drand round #{round.toLocaleString()}
-                </div>
-              </div>
-            )}
-
-            <div className="modal-sub-toggle">
-              <div
-                className={'toggle' + (usePwOnTime ? ' on' : '')}
-                role="switch"
-                aria-checked={usePwOnTime}
-                tabIndex={0}
-                onClick={() => setUsePwOnTime((v) => !v)}
-                onKeyDown={(e) => {
-                  if (e.key === ' ' || e.key === 'Enter') {
-                    e.preventDefault();
-                    setUsePwOnTime((v) => !v);
-                  }
-                }}
-              />
-              <div className="label-stack">
-                <b>Also require a password</b>
-                <span>
-                  Recipients won&rsquo;t see when the capsule unlocks until they enter the
-                  password.
-                </span>
-              </div>
-            </div>
-
-            {usePwOnTime && (
-              <>
-                <label>Password</label>
+              {preset === 'custom' && (
                 <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Choose a password"
+                  type="datetime-local"
+                  value={customLocal}
+                  min={toLocalInput(Date.now() + 60_000)}
+                  onChange={(e) => setCustomLocal(e.target.value)}
+                  style={{ marginTop: 8 }}
                 />
-              </>
-            )}
-          </>
-        )}
+              )}
+
+              {tooSoon && (
+                <div className="stat-row" style={{ color: 'var(--cerulean-400)' }}>
+                  ⚠ Unlock time must be at least 30 seconds from now
+                </div>
+              )}
+
+              {unlockMs && round && (
+                <div className="tc-readout">
+                  <div>
+                    <b>Unlocks</b> {fmtDate(unlockMs)}
+                  </div>
+                  <div className="tc-readout-sub">
+                    in {fmtDuration(unlockMs - Date.now())} · drand round #{round.toLocaleString()}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
 
         <label style={{ marginTop: 16 }}>Shareable link</label>
         <div className="url-row">
           <input
             type="text"
             readOnly
-            value={
-              busy
-                ? 'Building link…'
-                : !passwordReady
-                  ? mode === 'time'
-                    ? 'Pick an unlock time…'
-                    : 'Enter a password…'
-                  : url
-            }
+            value={linkPlaceholder || url}
             onFocus={(e) => e.target.select()}
           />
           <button
             className="btn btn-primary"
             onClick={copy}
-            disabled={busy || !url || !passwordReady}
+            disabled={busy || !url || !ready}
           >
             <IconCopy /> Copy
           </button>
@@ -338,7 +292,7 @@ export function ShareModal({ open, onClose, getState, onToast }: Props) {
           <span>
             {tooBig
               ? '⚠ Some browsers cap URLs around 8 KB'
-              : mode === 'time'
+              : useTimelock
                 ? 'Locked via drand quicknet — if that network ever goes dark, the document is unrecoverable.'
                 : 'Fits in any modern browser'}
           </span>
