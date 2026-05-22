@@ -52,7 +52,7 @@ export function HelpModal({ open, onClose }: Props) {
           <div className="settings-label">Password encryption</div>
           <p className="help-text">
             A password-protected link (<code>#e=</code>) is encrypted with AES-GCM-256. The key is
-            derived from your password using PBKDF2-SHA256 with <strong>200,000 rounds</strong>,
+            derived from your password using PBKDF2-SHA256 with <strong>600,000 rounds</strong>,
             with a random salt and IV per share. Only the ciphertext, salt, and IV end up in the
             URL — never the password itself.
           </p>
@@ -69,6 +69,13 @@ export function HelpModal({ open, onClose }: Props) {
             signature needed to decrypt your capsule does not yet exist on the network — it will
             only be published at the unlock time you chose. <code>#te=</code> adds a password
             layer on top, so the recipient needs both the time <em>and</em> the password.
+          </p>
+          <p className="help-text">
+            One thing to note: unlocking a capsule fetches the round signature from a public drand
+            endpoint, so the drand network can see that <em>some</em> client (your IP) is unlocking
+            <em> some</em> capsule at that time. drand never sees the ciphertext or the plaintext,
+            and the same signature serves countless capsules — but if request-time visibility
+            matters, you may want to route the unlock through a proxy or Tor.
           </p>
         </div>
 

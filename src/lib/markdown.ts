@@ -54,10 +54,12 @@ interface LineInfo {
 
 function classifyLine(line: string, inFence: number | null): LineInfo {
   if (inFence !== null) {
-    if (/^```/.test(line)) return { kind: 'codefence-end', cls: 'codefence', inline: line };
+    if (/^```/.test(line))
+      return { kind: 'codefence-end', cls: 'codefence', inline: escapeHtml(line) };
     return { kind: 'code', cls: 'code', inline: escapeHtml(line) || '​' };
   }
-  if (/^```/.test(line)) return { kind: 'codefence-start', cls: 'codefence', inline: line };
+  if (/^```/.test(line))
+    return { kind: 'codefence-start', cls: 'codefence', inline: escapeHtml(line) };
   if (/^---+\s*$/.test(line) || /^\*\*\*+\s*$/.test(line)) {
     return { kind: 'hr', cls: 'hr', inline: '<span class="syn">' + escapeHtml(line) + '</span>' };
   }

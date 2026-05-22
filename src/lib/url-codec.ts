@@ -65,7 +65,7 @@ async function deriveKey(password: string, salt: Uint8Array): Promise<CryptoKey>
     ['deriveKey']
   );
   return crypto.subtle.deriveKey(
-    { name: 'PBKDF2', salt: salt as BufferSource, iterations: 200_000, hash: 'SHA-256' },
+    { name: 'PBKDF2', salt: salt as BufferSource, iterations: 600_000, hash: 'SHA-256' },
     baseKey,
     { name: 'AES-GCM', length: 256 },
     false,
@@ -96,14 +96,13 @@ async function decryptBytes(payload: Uint8Array, password: string): Promise<Uint
   const iv = payload.slice(16, 28);
   const ct = payload.slice(28);
   const key = await deriveKey(password, salt);
-  const pt = new Uint8Array(
+  return new Uint8Array(
     await crypto.subtle.decrypt(
       { name: 'AES-GCM', iv: iv as BufferSource },
       key,
       ct as BufferSource
     )
   );
-  return pt;
 }
 
 /** Inner envelope for time-locked URLs (#td= and, after pw-decryption, #te=). */
