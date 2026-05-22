@@ -381,7 +381,7 @@ export default function App() {
       quote: selection.text,
       before,
       after,
-      top: selection.rect.bottom - wrapRect.top + window.scrollY + 8,
+      top: selection.rect.bottom - wrapRect.top + 8,
       left: Math.min(selection.rect.left - wrapRect.left, wrapRect.width - 340),
     });
     setSelection(null);
@@ -600,8 +600,7 @@ export default function App() {
               style={{
                 top:
                   selection.rect.top -
-                  editorWrapRef.current.getBoundingClientRect().top +
-                  window.scrollY,
+                  editorWrapRef.current.getBoundingClientRect().top,
                 left:
                   selection.rect.left +
                   selection.rect.width / 2 -
