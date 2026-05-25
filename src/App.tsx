@@ -151,6 +151,8 @@ export default function App() {
     null
   );
   const [tcEnvelope, setTcEnvelope] = useState<TimeCapsuleEnvelope | null>(null);
+  // Password from the outer AES layer of a #te= link, needed for the inner one.
+  const [tcPassword, setTcPassword] = useState<string | null>(null);
   const [composer, setComposer] = useState<ComposerState | null>(null);
   const [selection, setSelection] = useState<SelectionInfo | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -236,8 +238,10 @@ export default function App() {
     if (!pwPrompt) return;
     const res = await decodeUrl(pwPrompt.hash, pw);
     if (res.timeCapsule) {
-      // #te=: outer password peeled, inner is a time capsule.
+      // #te=: outer password peeled, inner is a time capsule. Keep the password
+      // around — the capsule's payload is AES'd with it under the tlock layer.
       setTcEnvelope(res.timeCapsule);
+      setTcPassword(pw);
       setPwPrompt(null);
       return;
     }
@@ -505,13 +509,16 @@ export default function App() {
     return (
       <TimeCapsuleUnlock
         envelope={tcEnvelope}
+        password={tcPassword}
         onUnlocked={(state) => {
           applyState(state);
           setTcEnvelope(null);
+          setTcPassword(null);
           showToast('Time capsule unsealed');
         }}
         onCancel={() => {
           setTcEnvelope(null);
+          setTcPassword(null);
           const id = getCurrentId();
           const doc = id ? getDoc(id) : null;
           if (doc) {
