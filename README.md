@@ -45,7 +45,7 @@ If the host disappears tomorrow, your old links keep working as long as you have
 | `#d=…`  | plain                 | gzip → base64url |
 | `#e=…`  | password              | gzip → AES-GCM → base64url |
 | `#td=…` | time capsule          | gzip → tlock → base64url |
-| `#te=…` | time capsule + password | gzip → AES-GCM → tlock → AES-GCM → base64url |
+| `#te=…` | time capsule + password | gzip → tlock → AES-GCM → base64url |
 
 The password layer is always outermost, so someone without the password can't even tell a capsule from a plain encrypted link, nor read its unlock round. The result is written to the clipboard as a link.
 

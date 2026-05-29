@@ -9,7 +9,6 @@ import { IconClock } from './Icons';
 
 interface Props {
   envelope: TimeCapsuleEnvelope;
-  password?: string | null;
   onUnlocked: (state: DocState) => void;
   onCancel: () => void;
 }
@@ -38,7 +37,7 @@ function fmtAbsolute(ms: number): string {
   });
 }
 
-export function TimeCapsuleUnlock({ envelope, password, onUnlocked, onCancel }: Props) {
+export function TimeCapsuleUnlock({ envelope, onUnlocked, onCancel }: Props) {
   const [now, setNow] = useState(() => Date.now());
   const [phase, setPhase] = useState<Phase>(
     envelope.unlockMs <= Date.now() ? 'ready' : 'locked'
@@ -65,7 +64,7 @@ export function TimeCapsuleUnlock({ envelope, password, onUnlocked, onCancel }: 
     // can lag a beat. Retry NotYetReadyError up to 10x with 3s spacing.
     for (let attempt = 0; attempt < 10; attempt++) {
       try {
-        const state = await openTimeCapsule(envelope, password ?? undefined);
+        const state = await openTimeCapsule(envelope);
         onUnlocked(state);
         return;
       } catch (err) {

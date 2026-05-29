@@ -55,9 +55,9 @@ Comments are **not** stored as offsets. Each `CommentThread` keeps the quoted te
 | `#d=`  | gzip → base64url |
 | `#e=`  | gzip → AES-GCM → base64url |
 | `#td=` | gzip → tlock → base64url |
-| `#te=` | gzip → AES-GCM → tlock → AES-GCM → base64url |
+| `#te=` | gzip → tlock → AES-GCM → base64url |
 
-Key facts: the **password (AES-GCM-256, PBKDF2-SHA256 600k rounds) is always the outermost layer**, so it hides whether a link is even a capsule. `#te=` puts a *second* AES layer under tlock with the same password, so an unsealed capsule is still unreadable without it (see `buildEnvelope`/`openTimeCapsule`). Time-lock uses the drand "quicknet" beacon; `tlock-js`/`drand-client` are **dynamically imported** so they stay out of the main bundle until you seal or open a capsule. `roundAtUnix`/`unixMsAtRound` are pure local math — picking the unlock round needs no network; only decryption does.
+Key facts: the **password (AES-GCM-256, PBKDF2-SHA256 600k rounds) is always the outermost layer**, so it hides whether a link is even a capsule. For `#te=` that single AES layer also gates the password — it's the only way to reach the tlock ciphertext, so opening the capsule needs both the password and the unlock time (see `buildEnvelope`/`openTimeCapsule`). Time-lock uses the drand "quicknet" beacon; `tlock-js`/`drand-client` are **dynamically imported** so they stay out of the main bundle until you seal or open a capsule. `roundAtUnix`/`unixMsAtRound` are pure local math — picking the unlock round needs no network; only decryption does.
 
 ### App state & persistence
 

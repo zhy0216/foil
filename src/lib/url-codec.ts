@@ -4,15 +4,14 @@
      #d=  plain         — gzipped DocState JSON, base64url
      #e=  password      — AES-GCM over gzip(DocState JSON)
      #td= time capsule  — tlock-encrypted gzip(DocState JSON), wrapped in an envelope
-     #te= time + pass   — AES-GCM over an envelope whose payload is itself
-                          AES-GCM'd before time-locking, i.e. the full chain is
-                          plaintext → AES-GCM → tlock → AES-GCM. Both AES layers
-                          use the same password (separate salts). The inner layer
-                          means even the unsealed tlock output is useless without
-                          the password.
+     #te= time + pass   — AES-GCM over a tlock-encrypted envelope, i.e. the chain
+                          is plaintext → tlock → AES-GCM.
 
    Password layer is always outermost so it can hide whether-it's-a-capsule and
-   the unlock round from anyone without the password.
+   the unlock round from anyone without the password. That single AES layer is
+   also what gates the password: peeling it is the only way to reach the tlock
+   ciphertext, so opening a #te= capsule needs both the password and the unlock
+   time — a second AES layer under tlock (same password) would add nothing.
 */
 
 import {
@@ -113,11 +112,9 @@ async function decryptBytes(payload: Uint8Array, password: string): Promise<Uint
 /** Inner envelope for time-locked URLs (#td= and, after pw-decryption, #te=). */
 export interface TimeCapsuleEnvelope {
   v: 1;
-  age: string; // age-armored tlock ciphertext of gzip(DocState JSON), or — when
-  //              `inner` is set — of AES-GCM(gzip(DocState JSON)).
+  age: string; // age-armored tlock ciphertext of gzip(DocState JSON)
   round: number;
   unlockMs: number;
-  inner?: 'aes'; // payload under the tlock layer is AES-GCM'd with the password
 }
 
 function isEnvelope(x: unknown): x is TimeCapsuleEnvelope {
@@ -127,27 +124,15 @@ function isEnvelope(x: unknown): x is TimeCapsuleEnvelope {
     o.v === 1 &&
     typeof o.age === 'string' &&
     typeof o.round === 'number' &&
-    typeof o.unlockMs === 'number' &&
-    (o.inner === undefined || o.inner === 'aes')
+    typeof o.unlockMs === 'number'
   );
 }
 
-async function buildEnvelope(
-  state: DocState,
-  unlockMs: number,
-  password?: string | null
-): Promise<TimeCapsuleEnvelope> {
+async function buildEnvelope(state: DocState, unlockMs: number): Promise<TimeCapsuleEnvelope> {
   const round = roundAtUnix(unlockMs);
-  const json = JSON.stringify(state);
-  const compressed = await gzip(json);
-  // With a password, AES-encrypt the payload *before* time-locking. Combined
-  // with the outer password layer this yields plaintext → AES → tlock → AES,
-  // so an unsealed tlock ciphertext is still unreadable without the password.
-  const payload = password ? await encryptBytes(compressed, password) : compressed;
-  const age = await timelockEncrypt(payload, round);
-  const env: TimeCapsuleEnvelope = { v: 1, age, round, unlockMs: unixMsAtRound(round) };
-  if (password) env.inner = 'aes';
-  return env;
+  const compressed = await gzip(JSON.stringify(state));
+  const age = await timelockEncrypt(compressed, round);
+  return { v: 1, age, round, unlockMs: unixMsAtRound(round) };
 }
 
 /** Build a shareable URL hash. */
@@ -158,7 +143,7 @@ export async function encodeUrl(
   const { password, unlockMs } = opts;
 
   if (unlockMs && unlockMs > Date.now()) {
-    const env = await buildEnvelope(state, unlockMs, password);
+    const env = await buildEnvelope(state, unlockMs);
     const envJson = JSON.stringify(env);
     if (password) {
       const ct = await encryptBytes(await gzip(envJson), password);
@@ -223,17 +208,10 @@ export async function decodeUrl(hash: string, password?: string): Promise<Decode
 }
 
 /** Decrypt a time-capsule envelope's payload after the unlock round has published.
- *  Envelopes with `inner: 'aes'` (the #te= path) carry a second AES-GCM layer
- *  under the tlock layer and require the same `password` used for the outer one. */
-export async function openTimeCapsule(
-  env: TimeCapsuleEnvelope,
-  password?: string
-): Promise<DocState> {
-  let payload = await timelockDecrypt(env.age);
-  if (env.inner === 'aes') {
-    if (!password) throw new Error('Password required to open this capsule');
-    payload = await decryptBytes(payload, password);
-  }
+ *  For #te= links the outer AES (password) layer is already peeled by `decodeUrl`
+ *  before we get here, so the envelope's payload is plain tlock-over-gzip. */
+export async function openTimeCapsule(env: TimeCapsuleEnvelope): Promise<DocState> {
+  const payload = await timelockDecrypt(env.age);
   const out = await gunzip(payload);
   return JSON.parse(dec.decode(out)) as DocState;
 }
