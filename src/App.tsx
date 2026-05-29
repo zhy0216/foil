@@ -61,7 +61,7 @@ A small markdown editor that lives entirely in your browser. **Type to format**,
 
 - Live styling — no separate preview pane
 - Share links carry the entire document; nothing is sent to a server
-- Optional **password** before you share → AES-GCM, 200k PBKDF2 rounds
+- Optional **password** before you share → AES-GCM, 600k PBKDF2 rounds
 - **Time capsule** — lock a link until a future moment. Nobody, not even you, can read it before the unlock time (powered by [drand](https://drand.love) tlock).
 - Highlight any text and **leave a comment**. Comments travel with the link.
 
@@ -375,11 +375,19 @@ export default function App() {
     if (!selection || !selection.text.trim()) return;
     if (readOnly) showToast('This is a shared link — open in editor to comment');
     const md = editorRef.current?.getMarkdown() ?? '';
-    const idx = md.indexOf(selection.text);
     const ctxLen = 12;
-    const before = idx > 0 ? md.slice(Math.max(0, idx - ctxLen), idx) : '';
-    const after =
-      idx >= 0 ? md.slice(idx + selection.text.length, idx + selection.text.length + ctxLen) : '';
+    // Anchor context from the *actual* selection offsets, not indexOf — otherwise
+    // commenting on a phrase that recurs earlier grabs the wrong occurrence's context.
+    let start: number, end: number;
+    if (selection.startOff != null && selection.endOff != null) {
+      start = Math.min(selection.startOff, selection.endOff);
+      end = Math.max(selection.startOff, selection.endOff);
+    } else {
+      start = md.indexOf(selection.text);
+      end = start >= 0 ? start + selection.text.length : -1;
+    }
+    const before = start > 0 ? md.slice(Math.max(0, start - ctxLen), start) : '';
+    const after = end >= 0 ? md.slice(end, end + ctxLen) : '';
     const wrapRect = editorWrapRef.current!.getBoundingClientRect();
     setComposer({
       quote: selection.text,
