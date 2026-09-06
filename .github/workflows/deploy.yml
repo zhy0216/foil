@@ -7,8 +7,6 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
   group: pages
@@ -16,17 +14,17 @@ concurrency:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pages: read
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/checkout@v6
         with:
-          bun-version: latest
+          persist-credentials: false
 
-      - run: bun install --frozen-lockfile
-
-      - run: bun run build
+      - uses: ./.github/actions/verify
 
       - uses: actions/configure-pages@v5
 
@@ -36,7 +34,10 @@ jobs:
 
   deploy:
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
