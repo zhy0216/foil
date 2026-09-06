@@ -3,6 +3,8 @@ agent: inherit
 
 # 本地保存、失败状态与偏好
 
+状态：实现中（2026-09-06）。
+
 对应发现：F14–F16、F31。依赖 `01-share-boundaries.md`。主要修改 App/doc-store/settings；不修改分享 UI、Editor、codec 或 package。
 
 ## T1 · 可失败且不破坏数据的存储层

@@ -26,22 +26,27 @@ import { Thread } from './components/Thread';
 import { TimeCapsuleUnlock } from './components/TimeCapsuleUnlock';
 import {
   clearCurrentId,
-  createDoc,
+  createDocResult,
   deleteDoc,
-  getCurrentId,
-  getDoc,
-  listDocs,
+  listDocsDetailed,
+  readCurrentId,
+  readDoc,
+  readStorageItem,
   saveDoc,
   setCurrentId as persistCurrentId,
+  writeStorageItem,
   type DocMeta,
   type StoredDoc,
+  type StorageFailure,
 } from './lib/doc-store';
 import {
   ACCENT_MAP,
   DEFAULT_SETTINGS,
   EDITOR_WIDTHS,
+  parseSettings,
   PROSE_FONT_MAP,
   PROSE_SIZES,
+  isTheme,
 } from './lib/settings-config';
 import { decodeUrl, type TimeCapsuleEnvelope } from './lib/url-codec';
 import type {
@@ -50,7 +55,6 @@ import type {
   DocState,
   SelectionInfo,
   Settings,
-  Theme,
 } from './types';
 
 const SAMPLE_MD = `# Welcome to Foil
@@ -85,22 +89,43 @@ const greet = (name) => \`hello, \${name}\`;
 Press **⌘B / ⌘I** to bold or italicise the selection. Hit **⌘K** to insert a link.
 `;
 
-function loadInitialSettings(): Settings {
-  try {
-    const saved = JSON.parse(localStorage.getItem('foil_settings') || 'null');
-    if (saved) return { ...DEFAULT_SETTINGS, ...saved };
-  } catch {
-    /* ignore */
+interface InitialPreferences {
+  settings: Settings;
+  authorName: string;
+  errors: StorageFailure[];
+}
+
+function loadInitialPreferences(): InitialPreferences {
+  const errors: StorageFailure[] = [];
+  const settingsRaw = readStorageItem('local', 'foil_settings');
+  let settings = { ...DEFAULT_SETTINGS };
+  if (!settingsRaw.ok) {
+    errors.push(settingsRaw.error);
+  } else if (settingsRaw.value) {
+    try {
+      settings = parseSettings(JSON.parse(settingsRaw.value));
+    } catch {
+      settings = { ...DEFAULT_SETTINGS };
+    }
+  } else {
+    const legacy = readStorageItem('local', 'foil_theme');
+    if (!legacy.ok) errors.push(legacy.error);
+    else if (legacy.value != null && isTheme(legacy.value)) settings = { ...settings, theme: legacy.value };
   }
-  const legacyTheme = localStorage.getItem('foil_theme') as Theme | null;
-  return { ...DEFAULT_SETTINGS, theme: legacyTheme ?? 'auto' };
+
+  const name = readStorageItem('local', 'foil_name');
+  if (!name.ok) errors.push(name.error);
+  return { settings, authorName: name.ok ? name.value || '' : '', errors };
+}
+
+/** Kept as a small public seam for settings tests and future non-React callers. */
+export function loadInitialSettings(): Settings {
+  return loadInitialPreferences().settings;
 }
 
 export default function App() {
-  const [settings, setSettings] = useState<Settings>(loadInitialSettings);
-  useEffect(() => {
-    localStorage.setItem('foil_settings', JSON.stringify(settings));
-  }, [settings]);
+  const [initialPreferences] = useState<InitialPreferences>(loadInitialPreferences);
+  const [settings, setSettings] = useState<Settings>(initialPreferences.settings);
 
   // Theme follow-OS
   useEffect(() => {
@@ -154,22 +179,78 @@ export default function App() {
   const [composer, setComposer] = useState<ComposerState | null>(null);
   const [selection, setSelection] = useState<SelectionInfo | null>(null);
   const [toast, setToast] = useState<string | null>(null);
-  const [saveState, setSaveState] = useState<'saved' | 'saving'>('saved');
+  const [saveState, setSaveState] = useState<'saved' | 'saving' | 'unsaved' | 'error'>('unsaved');
   const [readOnly, setReadOnly] = useState(false);
   const [currentId, setCurrentIdState] = useState<string | null>(null);
   const [docs, setDocs] = useState<DocMeta[]>([]);
   const [bootstrapped, setBootstrapped] = useState(false);
+  const [storageError, setStorageError] = useState<string | null>(null);
+  const [dirtyRevision, setDirtyRevision] = useState(0);
+  const dirtyRef = useRef(false);
+  const dirtyRevisionRef = useRef(0);
+  const pendingSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const editorRef = useRef<EditorHandle>(null);
   const editorWrapRef = useRef<HTMLDivElement>(null);
-  const userName = useMemo(() => localStorage.getItem('foil_name') || '', []);
+  const [userName, setUserName] = useState(initialPreferences.authorName);
 
   const showToast = useCallback((msg: string) => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     setToast(msg);
-    setTimeout(() => setToast(null), 2000);
+    toastTimerRef.current = setTimeout(() => {
+      setToast(null);
+      toastTimerRef.current = null;
+    }, 2000);
   }, []);
 
-  const refreshDocs = useCallback(() => setDocs(listDocs()), []);
+  useEffect(() => () => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+  }, []);
+
+  const reportStorageError = useCallback(
+    (error: StorageFailure) => {
+      setStorageError(error.message);
+      showToast(error.message);
+    },
+    [showToast]
+  );
+
+  useEffect(() => {
+    if (initialPreferences.errors.length > 0) {
+      reportStorageError(initialPreferences.errors[0]);
+    }
+  }, [initialPreferences.errors, reportStorageError]);
+
+  // Do not rewrite malformed or unavailable settings during a read-only open.
+  // Persist only an explicit preference change, and keep the UI usable if the
+  // browser rejects the write.
+  const settingsReadyRef = useRef(false);
+  useEffect(() => {
+    if (!settingsReadyRef.current) {
+      settingsReadyRef.current = true;
+      return;
+    }
+    const result = writeStorageItem('local', 'foil_settings', JSON.stringify(settings));
+    if (!result.ok) reportStorageError(result.error);
+  }, [settings, reportStorageError]);
+
+  const refreshDocs = useCallback(() => {
+    const result = listDocsDetailed();
+    if (!result.ok) {
+      reportStorageError(result.error);
+      return false;
+    }
+    setDocs(result.value.docs);
+    if (result.value.corrupt > 0) {
+      reportStorageError({
+        code: 'corrupt',
+        operation: 'enumerate',
+        message: `${result.value.corrupt} saved document${result.value.corrupt === 1 ? '' : 's'} could not be read and was left untouched.`,
+      });
+    }
+    return true;
+  }, [reportStorageError]);
 
   const applyState = useCallback((state: DocState) => {
     setTitle(state.title || 'Untitled document');
@@ -178,15 +259,115 @@ export default function App() {
     setActiveAnchorId(null);
   }, []);
 
+  const latestDocRef = useRef<{
+    id: string | null;
+    title: string;
+    md: string;
+    comments: CommentThread[];
+    createdAt: number | null;
+  }>({ id: null, title: '', md: '', comments: [], createdAt: null });
+  latestDocRef.current = { id: currentId, title, md: markdown, comments, createdAt: latestDocRef.current.createdAt };
+  const createdAtByIdRef = useRef<Record<string, number>>({});
+
+  const markDirty = useCallback(() => {
+    dirtyRef.current = true;
+    dirtyRevisionRef.current += 1;
+    setDirtyRevision((v) => v + 1);
+    setSaveState('saving');
+  }, []);
+
   const adoptDoc = useCallback(
-    (doc: StoredDoc) => {
-      persistCurrentId(doc.id);
+    (doc: StoredDoc, persisted = true) => {
+      if (pendingSaveRef.current) {
+        clearTimeout(pendingSaveRef.current);
+        pendingSaveRef.current = null;
+      }
+      dirtyRef.current = false;
+      dirtyRevisionRef.current += 1;
+      setDirtyRevision((v) => v + 1);
+      createdAtByIdRef.current[doc.id] = doc.createdAt;
+      latestDocRef.current.createdAt = doc.createdAt;
+      const currentResult = persistCurrentId(doc.id);
       setCurrentIdState(doc.id);
       setReadOnly(false);
+      setSaveState(persisted && currentResult.ok ? 'saved' : 'error');
+      if (!currentResult.ok) reportStorageError(currentResult.error);
+      if (!persisted) setSaveState('unsaved');
       applyState({ md: doc.md, comments: doc.comments, title: doc.title });
     },
-    [applyState]
+    [applyState, reportStorageError]
   );
+
+  const saveSnapshot = useCallback(
+    (snapshot: typeof latestDocRef.current, revision: number): boolean => {
+      if (!snapshot.id) return true;
+      const now = Date.now();
+      const createdAt =
+        snapshot.createdAt ?? createdAtByIdRef.current[snapshot.id] ?? now;
+      const result = saveDoc({
+        id: snapshot.id,
+        title: snapshot.title,
+        md: snapshot.md,
+        comments: snapshot.comments,
+        createdAt,
+        updatedAt: now,
+      });
+      if (!result.ok) {
+        setSaveState('error');
+        reportStorageError(result.error);
+        return false;
+      }
+      createdAtByIdRef.current[snapshot.id] = createdAt;
+      if (snapshot.id === latestDocRef.current.id && revision === dirtyRevisionRef.current) {
+        dirtyRef.current = false;
+        setSaveState('saved');
+      }
+      setStorageError(null);
+      refreshDocs();
+      return true;
+    },
+    [refreshDocs, reportStorageError]
+  );
+
+  const flushSave = useCallback((): boolean => {
+    if (pendingSaveRef.current) {
+      clearTimeout(pendingSaveRef.current);
+      pendingSaveRef.current = null;
+    }
+    if (readOnly || !currentId || !dirtyRef.current) return true;
+    return saveSnapshot(latestDocRef.current, dirtyRevisionRef.current);
+  }, [currentId, readOnly, saveSnapshot]);
+
+  // One debounce path for all local edits. Capturing the identity and revision
+  // prevents a delayed callback from writing a newer document's contents.
+  useEffect(() => {
+    if (!bootstrapped || readOnly || !currentId || !dirtyRef.current) return;
+    const snapshot = { ...latestDocRef.current, comments: [...latestDocRef.current.comments] };
+    const revision = dirtyRevisionRef.current;
+    pendingSaveRef.current = setTimeout(() => {
+      pendingSaveRef.current = null;
+      saveSnapshot(snapshot, revision);
+    }, 400);
+    return () => {
+      if (pendingSaveRef.current) {
+        clearTimeout(pendingSaveRef.current);
+        pendingSaveRef.current = null;
+      }
+    };
+  }, [bootstrapped, currentId, dirtyRevision, readOnly, saveSnapshot]);
+
+  useEffect(() => {
+    const flushWhenHidden = () => {
+      if (document.visibilityState === 'hidden') flushSave();
+    };
+    const flushOnPageHide = () => flushSave();
+    document.addEventListener('visibilitychange', flushWhenHidden);
+    window.addEventListener('pagehide', flushOnPageHide);
+    return () => {
+      document.removeEventListener('visibilitychange', flushWhenHidden);
+      window.removeEventListener('pagehide', flushOnPageHide);
+    };
+  }, [flushSave]);
 
   // Bootstrap: load from URL hash if present (read-only), otherwise from doc-store
   useEffect(() => {
@@ -221,12 +402,19 @@ export default function App() {
       })();
       return;
     }
-    const id = getCurrentId();
-    let doc = id ? getDoc(id) : null;
-    if (!doc) {
-      doc = createDoc({ md: SAMPLE_MD });
+    const idResult = readCurrentId();
+    if (!idResult.ok) reportStorageError(idResult.error);
+    const id = idResult.ok ? idResult.value : null;
+    const docResult = id ? readDoc(id) : { ok: true as const, value: null };
+    if (!docResult.ok) reportStorageError(docResult.error);
+    const doc = docResult.ok ? docResult.value : null;
+    if (doc) {
+      adoptDoc(doc, true);
+    } else {
+      const created = createDocResult({ md: SAMPLE_MD });
+      if (!created.ok) reportStorageError(created.error);
+      adoptDoc(created.value, created.ok);
     }
-    adoptDoc(doc);
     refreshDocs();
     setBootstrapped(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -250,84 +438,73 @@ export default function App() {
     }
   };
 
-  // Debounced auto-save to localStorage (only when bound to a local doc)
-  useEffect(() => {
-    if (!bootstrapped) return;
-    if (readOnly) return;
-    if (!currentId) return;
-    setSaveState('saving');
-    const handle = setTimeout(() => {
-      const now = Date.now();
-      const existing = getDoc(currentId);
-      saveDoc({
-        id: currentId,
-        title,
-        md: markdown,
-        comments,
-        createdAt: existing?.createdAt ?? now,
-        updatedAt: now,
-      });
-      setSaveState('saved');
-      refreshDocs();
-    }, 400);
-    return () => clearTimeout(handle);
-  }, [markdown, comments, title, readOnly, currentId, bootstrapped, refreshDocs]);
-
-  function flushSave() {
-    if (readOnly || !currentId) return;
-    const now = Date.now();
-    const existing = getDoc(currentId);
-    saveDoc({
-      id: currentId,
-      title,
-      md: markdown,
-      comments,
-      createdAt: existing?.createdAt ?? now,
-      updatedAt: now,
-    });
-  }
-
   const handleSwitchDoc = (id: string) => {
     if (id === currentId) return;
-    const doc = getDoc(id);
-    if (!doc) {
+    const result = readDoc(id);
+    if (!result.ok) {
+      reportStorageError(result.error);
+      refreshDocs();
+      return;
+    }
+    if (!result.value) {
       showToast('Document no longer exists');
       refreshDocs();
       return;
     }
-    flushSave();
-    adoptDoc(doc);
+    if (!flushSave()) return;
+    adoptDoc(result.value, true);
     refreshDocs();
   };
 
   const handleNewDoc = () => {
-    flushSave();
-    const doc = createDoc({ md: '' });
-    adoptDoc(doc);
+    if (!flushSave()) return;
+    const created = createDocResult({ md: '' });
+    if (!created.ok) {
+      reportStorageError(created.error);
+      return;
+    }
+    adoptDoc(created.value, true);
     refreshDocs();
   };
 
   const handleDeleteDoc = (id: string) => {
-    deleteDoc(id);
+    if (id === currentId && pendingSaveRef.current) {
+      clearTimeout(pendingSaveRef.current);
+      pendingSaveRef.current = null;
+    }
+    const removed = deleteDoc(id);
+    if (!removed.ok) {
+      reportStorageError(removed.error);
+      return;
+    }
     if (id === currentId) {
-      const remaining = listDocs();
-      if (remaining.length > 0) {
-        const next = getDoc(remaining[0].id);
-        if (next) {
-          adoptDoc(next);
+      const remaining = listDocsDetailed();
+      if (remaining.ok && remaining.value.docs.length > 0) {
+        const next = readDoc(remaining.value.docs[0].id);
+        if (next.ok && next.value) {
+          adoptDoc(next.value, true);
           refreshDocs();
           return;
         }
+        if (!next.ok) reportStorageError(next.error);
       }
-      const fresh = createDoc({ md: SAMPLE_MD });
-      adoptDoc(fresh);
+      const fresh = createDocResult({ md: SAMPLE_MD });
+      if (fresh.ok) adoptDoc(fresh.value, true);
+      else {
+        reportStorageError(fresh.error);
+        adoptDoc(fresh.value, false);
+      }
     }
     refreshDocs();
   };
 
   const handleEditShared = () => {
-    const doc = createDoc({ title, md: markdown, comments });
-    adoptDoc(doc);
+    const created = createDocResult({ title, md: markdown, comments });
+    if (!created.ok) {
+      reportStorageError(created.error);
+      return;
+    }
+    adoptDoc(created.value, true);
     refreshDocs();
     showToast('Saved as a local document — your edits stay on this device');
   };
@@ -369,7 +546,10 @@ export default function App() {
 
   const startNewComment = () => {
     if (!selection || !selection.text.trim()) return;
-    if (readOnly) showToast('This is a shared link — open in editor to comment');
+    if (readOnly) {
+      showToast('This is a shared link — open in editor to comment');
+      return;
+    }
     const md = editorRef.current?.getMarkdown() ?? '';
     const ctxLen = 12;
     // Anchor context from the *actual* selection offsets, not indexOf — otherwise
@@ -396,10 +576,19 @@ export default function App() {
     window.getSelection()?.removeAllRanges();
   };
 
+  const rememberAuthor = useCallback(
+    (author: string) => {
+      setUserName(author);
+      const result = writeStorageItem('local', 'foil_name', author);
+      if (!result.ok) reportStorageError(result.error);
+    },
+    [reportStorageError]
+  );
+
   const submitNewComment = (body: string, author: string) => {
-    if (!composer) return;
+    if (!composer || readOnly) return;
     const id = 'c' + Math.random().toString(36).slice(2, 9);
-    localStorage.setItem('foil_name', author);
+    rememberAuthor(author);
     setComments((cs) => [
       ...cs,
       {
@@ -412,12 +601,14 @@ export default function App() {
         ],
       },
     ]);
+    markDirty();
     setComposer(null);
     setActiveAnchorId(id);
   };
 
   const addReply = (threadId: string, body: string, author: string) => {
-    localStorage.setItem('foil_name', author);
+    if (readOnly || !comments.some((c) => c.id === threadId)) return;
+    rememberAuthor(author);
     setComments((cs) =>
       cs.map((c) =>
         c.id === threadId
@@ -436,10 +627,13 @@ export default function App() {
           : c
       )
     );
+    markDirty();
   };
 
   const deleteThread = (threadId: string) => {
+    if (readOnly || !comments.some((c) => c.id === threadId)) return;
     setComments((cs) => cs.filter((c) => c.id !== threadId));
+    markDirty();
     if (activeAnchorId === threadId) setActiveAnchorId(null);
   };
 
@@ -482,7 +676,13 @@ export default function App() {
     '--editor-width': EDITOR_WIDTHS[settings.editorWidth] || EDITOR_WIDTHS.default,
   };
 
-  const saveLabel = readOnly ? '● shared view' : saveState === 'saving' ? '● saving' : '● saved';
+  const saveLabel = readOnly
+    ? '● shared view'
+    : saveState === 'saving'
+      ? '● saving'
+      : saveState === 'saved'
+        ? '● saved'
+        : '● not saved';
 
   // While a password prompt or time capsule is awaiting unlock, render only
   // the modal — the empty editor frame and "Untitled document" chrome behind
@@ -494,14 +694,18 @@ export default function App() {
         onSubmit={onUnlock}
         onCancel={() => {
           setPwPrompt(null);
-          const id = getCurrentId();
-          const doc = id ? getDoc(id) : null;
-          if (doc) {
-            adoptDoc(doc);
+          const idResult = readCurrentId();
+          if (!idResult.ok) reportStorageError(idResult.error);
+          const id = idResult.ok ? idResult.value : null;
+          const docResult = id ? readDoc(id) : { ok: true as const, value: null };
+          if (!docResult.ok) reportStorageError(docResult.error);
+          if (docResult.ok && docResult.value) {
+            adoptDoc(docResult.value, true);
           } else {
             clearCurrentId();
-            const fresh = createDoc({ md: SAMPLE_MD });
-            adoptDoc(fresh);
+            const fresh = createDocResult({ md: SAMPLE_MD });
+            if (!fresh.ok) reportStorageError(fresh.error);
+            adoptDoc(fresh.value, fresh.ok);
           }
           refreshDocs();
         }}
@@ -520,14 +724,18 @@ export default function App() {
         }}
         onCancel={() => {
           setTcEnvelope(null);
-          const id = getCurrentId();
-          const doc = id ? getDoc(id) : null;
-          if (doc) {
-            adoptDoc(doc);
+          const idResult = readCurrentId();
+          if (!idResult.ok) reportStorageError(idResult.error);
+          const id = idResult.ok ? idResult.value : null;
+          const docResult = id ? readDoc(id) : { ok: true as const, value: null };
+          if (!docResult.ok) reportStorageError(docResult.error);
+          if (docResult.ok && docResult.value) {
+            adoptDoc(docResult.value, true);
           } else {
             clearCurrentId();
-            const fresh = createDoc({ md: SAMPLE_MD });
-            adoptDoc(fresh);
+            const fresh = createDocResult({ md: SAMPLE_MD });
+            if (!fresh.ok) reportStorageError(fresh.error);
+            adoptDoc(fresh.value, fresh.ok);
           }
           refreshDocs();
         }}
@@ -544,7 +752,11 @@ export default function App() {
         </div>
         <DocSwitcher
           title={title}
-          onTitleChange={setTitle}
+          onTitleChange={(next) => {
+            if (next === title) return;
+            setTitle(next);
+            markDirty();
+          }}
           docs={docs}
           currentId={currentId}
           onSwitch={handleSwitchDoc}
@@ -594,7 +806,10 @@ export default function App() {
           <Editor
             ref={editorRef}
             initialMarkdown={markdown}
-            onChange={setMarkdown}
+            onChange={(next) => {
+              setMarkdown(next);
+              markDirty();
+            }}
             onSelectionChange={setSelection}
             readOnly={readOnly}
             anchors={comments}
@@ -679,7 +894,7 @@ export default function App() {
         <div className="gutter-comments" style={{ position: 'relative', minHeight: 1 }}>
           {stackedThreads.map((t) => (
             <Thread
-              key={t.id}
+              key={`${t.id}:${userName}`}
               thread={t}
               active={activeAnchorId === t.id}
               onActivate={setActiveAnchorId}
@@ -712,6 +927,7 @@ export default function App() {
                 </button>
                 <Thread
                   thread={t}
+                  key={`${t.id}:${userName}:sheet`}
                   active
                   onActivate={() => {}}
                   onReply={addReply}
@@ -773,6 +989,11 @@ export default function App() {
               <path d="M8 0C3.58 0 0 3.58 0 8a8 8 0 0 0 5.47 7.59c.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
             </svg>
           </a>
+          {storageError && !readOnly && (
+            <span className="save-error" role="status" title={storageError}>
+              not saved
+            </span>
+          )}
           <span className={'save-state ' + (saveState === 'saving' && !readOnly ? 'saving' : '')}>
             {saveLabel}
           </span>
