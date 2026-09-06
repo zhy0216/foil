@@ -135,16 +135,16 @@ export function ShareModal({ open, onClose, getState, onToast, onLearnMore }: Pr
   const timelockMissing = useTimelock && (!unlockMs || !targetMs || targetMs <= Date.now() + 30_000);
   const ready = !passwordMissing && !timelockMissing;
 
-  // This is deliberately recomputed when getState changes (App updates the callback
-  // whenever markdown, comments, or title changes), allowing a result to be tied to
-  // the exact document snapshot that produced it.
-  const currentStateKey = useMemo(() => {
+  // Read the state for every render so a caller that keeps a stable getState callback
+  // is covered too. The serialized value is only a comparison key; the password is
+  // never included in this document snapshot or sent to logging/URL code.
+  const currentStateKey = (() => {
     try {
       return JSON.stringify(getState());
     } catch {
       return '';
     }
-  }, [getState]);
+  })();
   const currentSnapshot = useMemo(
     () => JSON.stringify({ state: currentStateKey, usePassword, password, useTimelock, targetMs, unlockMs }),
     [currentStateKey, usePassword, password, useTimelock, targetMs, unlockMs]
