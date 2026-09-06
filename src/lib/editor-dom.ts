@@ -1,126 +1,239 @@
-/* DOM utilities for translating between caret position and markdown char-offsets,
-   and for wrapping a markdown-offset range in a span. */
+/* Markdown offsets count UTF-16 code units, including syntax and line breaks.
+   CRLF/lone CR normalize to LF; every U+200B is reserved as a caret placeholder
+   and is removed (literal user-authored ZWSP is not representable in this editor).
+   Native blocks delimit lines; a terminal BR is browser caret padding, while
+   interior BRs are line breaks. Thus <div><br></div> is one empty line and
+   <div>text<br><br></div> ends in one real newline. */
 
-const ZWSP_RE = /​/g;
-
-export function getCharOffset(root: HTMLElement): number | null {
-  const sel = window.getSelection();
-  if (!sel || !sel.rangeCount) return null;
-  const range = sel.getRangeAt(0);
-  if (!root.contains(range.startContainer)) return null;
-  let offset = 0;
-  const blocks = root.querySelectorAll<HTMLElement>(':scope > .ln');
-  for (let bi = 0; bi < blocks.length; bi++) {
-    if (bi > 0) offset += 1;
-    const block = blocks[bi];
-    const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
-    let node: Text | null;
-    while ((node = walker.nextNode() as Text | null)) {
-      if (node === range.startContainer) {
-        offset += range.startOffset;
-        const before = node.textContent!.slice(0, range.startOffset);
-        offset -= (before.match(ZWSP_RE) || []).length;
-        return offset;
-      }
-      const txt = node.textContent ?? '';
-      offset += txt.length;
-      offset -= (txt.match(ZWSP_RE) || []).length;
-    }
-    if (range.startContainer === block) return offset;
-  }
-  return null;
+export function normalizeMarkdown(md: string): string {
+  return md.replace(/\r\n?/g, '\n').replace(/\u200b/g, '');
 }
 
-export function setCharOffset(root: HTMLElement, offset: number | null): void {
-  if (offset == null) return;
-  const blocks = root.querySelectorAll<HTMLElement>(':scope > .ln');
-  let remaining = offset;
-  for (let bi = 0; bi < blocks.length; bi++) {
-    if (bi > 0) {
-      if (remaining <= 0) {
-        placeAtBlockStart(blocks[bi]);
-        return;
-      }
-      remaining -= 1;
-    }
-    const block = blocks[bi];
-    const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
-    let node: Text | null;
-    let lastNode: Text | null = null;
-    while ((node = walker.nextNode() as Text | null)) {
-      lastNode = node;
-      const txt = node.textContent ?? '';
-      const realLen = txt.length - (txt.match(ZWSP_RE) || []).length;
-      if (remaining <= realLen) {
-        let domOff = 0;
-        let consumed = 0;
-        while (consumed < remaining && domOff < txt.length) {
-          if (txt[domOff] !== '​') consumed++;
-          domOff++;
+export interface MarkdownSelection {
+  anchor: number;
+  focus: number;
+}
+
+interface DOMPoint {
+  node: Node;
+  offset: number;
+}
+
+interface MarkdownDOM {
+  markdown: string;
+  boundaries: Map<Node, number[]>;
+}
+
+function isBlock(node: Node): boolean {
+  return node instanceof Element &&
+    (node.classList.contains('ln') || /^(DIV|P|LI|BLOCKQUOTE|PRE|H[1-6])$/.test(node.tagName));
+}
+
+// One traversal supplies the text and both endpoints, without touching Selection.
+function readDOM(root: HTMLElement): MarkdownDOM {
+  let markdown = '';
+  let afterCR = false;
+  const boundaries = new Map<Node, number[]>();
+
+  function visit(node: Node, paddingBR: Node | null): void {
+    const offsets = [markdown.length];
+    boundaries.set(node, offsets);
+    if (node.nodeType === Node.TEXT_NODE) {
+      const text = node.textContent ?? '';
+      for (let i = 0; i < text.length; i++) {
+        const char = text[i];
+        if (char !== '\u200b' && !(char === '\n' && afterCR)) {
+          markdown += char === '\r' ? '\n' : char;
         }
-        const sel = window.getSelection();
-        if (!sel) return;
-        const range = document.createRange();
-        range.setStart(node, domOff);
-        range.collapse(true);
-        sel.removeAllRanges();
-        sel.addRange(range);
-        return;
+        afterCR = char === '\r';
+        offsets.push(markdown.length);
       }
-      remaining -= realLen;
-    }
-    if (remaining === 0) {
-      const sel = window.getSelection();
-      if (!sel) return;
-      const range = document.createRange();
-      if (lastNode) range.setStart(lastNode, lastNode.textContent!.length);
-      else range.setStart(block, 0);
-      range.collapse(true);
-      sel.removeAllRanges();
-      sel.addRange(range);
       return;
     }
+    if (node instanceof Element && node.tagName === 'BR') {
+      if (node !== paddingBR) markdown += '\n';
+      afterCR = false;
+      return;
+    }
+    const children = Array.from(node.childNodes);
+    if (node === root || isBlock(node)) {
+      // Locate padding through inline wrappers, but not inside a nested block.
+      let last = node.lastChild;
+      while (last instanceof Element && last.tagName !== 'BR' && !isBlock(last)) {
+        last = last.lastChild;
+      }
+      paddingBR = last instanceof Element && last.tagName === 'BR' ? last : null;
+    }
+    let previousBlock = false;
+    for (let i = 0; i < children.length; i++) {
+      const child = children[i];
+      const block = isBlock(child);
+      if (i > 0 && (previousBlock || block)) {
+        markdown += '\n';
+        afterCR = false;
+      }
+      // An element child boundary belongs to the following line, if any.
+      offsets[i] = markdown.length;
+      visit(child, paddingBR);
+      offsets[i + 1] = markdown.length;
+      previousBlock = block;
+    }
   }
-  const last = blocks[blocks.length - 1];
-  if (last) placeAtBlockEnd(last);
+
+  visit(root, null);
+  return { markdown, boundaries };
 }
 
-function placeAtBlockStart(block: HTMLElement): void {
-  const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
-  const node = walker.nextNode() as Text | null;
-  const sel = window.getSelection();
-  if (!sel) return;
-  const range = document.createRange();
-  if (node) range.setStart(node, 0);
-  else range.setStart(block, 0);
-  range.collapse(true);
-  sel.removeAllRanges();
-  sel.addRange(range);
+function offsetAt(dom: MarkdownDOM, node: Node, offset: number): number | null {
+  return dom.boundaries.get(node)?.[offset] ?? null;
 }
 
-function placeAtBlockEnd(block: HTMLElement): void {
-  const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
-  let node: Text | null;
-  let last: Text | null = null;
-  while ((node = walker.nextNode() as Text | null)) last = node;
-  const sel = window.getSelection();
-  if (!sel) return;
-  const range = document.createRange();
-  if (last) range.setStart(last, last.textContent!.length);
-  else range.setStart(block, 0);
-  range.collapse(true);
-  sel.removeAllRanges();
-  sel.addRange(range);
+function pointAt(dom: MarkdownDOM, offset: number): DOMPoint {
+  const target = Math.max(0, Math.min(dom.markdown.length, Math.trunc(offset) || 0));
+  // Prefer text so typing continues inside the decorated line, including ZWSP.
+  for (const [node, offsets] of dom.boundaries) {
+    if (node.nodeType !== Node.TEXT_NODE) continue;
+    const index = offsets.indexOf(target);
+    if (index >= 0) return { node, offset: index };
+  }
+  for (const [node, offsets] of dom.boundaries) {
+    const index = offsets.indexOf(target);
+    if (index >= 0) return { node, offset: index };
+  }
+  throw new Error('Unmapped markdown boundary');
 }
 
 export function getMarkdown(root: HTMLElement): string {
-  const blocks = root.querySelectorAll<HTMLElement>(':scope > .ln');
-  const lines: string[] = [];
-  for (const b of blocks) {
-    const t = (b.textContent ?? '').replace(ZWSP_RE, '');
-    lines.push(t);
+  return readDOM(root).markdown;
+}
+
+export function getRangeOffsets(
+  root: HTMLElement,
+  range: Pick<Range, 'startContainer' | 'startOffset' | 'endContainer' | 'endOffset'>
+): { start: number; end: number } | null {
+  if (!root.contains(range.startContainer) || !root.contains(range.endContainer)) return null;
+  const dom = readDOM(root);
+  const start = offsetAt(dom, range.startContainer, range.startOffset);
+  const end = offsetAt(dom, range.endContainer, range.endOffset);
+  return start == null || end == null ? null : { start, end };
+}
+
+export function getSelectionOffsets(root: HTMLElement): MarkdownSelection | null {
+  const sel = root.ownerDocument.getSelection();
+  if (!sel?.rangeCount || !sel.anchorNode || !sel.focusNode) return null;
+  if (!root.contains(sel.anchorNode) || !root.contains(sel.focusNode)) return null;
+  const dom = readDOM(root);
+  const anchor = offsetAt(dom, sel.anchorNode, sel.anchorOffset);
+  const focus = offsetAt(dom, sel.focusNode, sel.focusOffset);
+  return anchor == null || focus == null ? null : { anchor, focus };
+}
+
+// Compatibility: this returns the ordered range start, even for a backward selection.
+export function getCharOffset(root: HTMLElement): number | null {
+  const sel = getSelectionOffsets(root);
+  return sel ? Math.min(sel.anchor, sel.focus) : null;
+}
+
+export function setSelectionOffsets(root: HTMLElement, selection: MarkdownSelection): void {
+  const sel = root.ownerDocument.getSelection();
+  if (!sel) return;
+  const dom = readDOM(root);
+  const anchor = pointAt(dom, selection.anchor);
+  const focus = pointAt(dom, selection.focus);
+  if (sel.anchorNode === anchor.node && sel.anchorOffset === anchor.offset &&
+      sel.focusNode === focus.node && sel.focusOffset === focus.offset) return;
+  sel.setBaseAndExtent(anchor.node, anchor.offset, focus.node, focus.offset);
+}
+
+export function setCharOffset(root: HTMLElement, offset: number | null): void {
+  if (offset != null) setSelectionOffsets(root, { anchor: offset, focus: offset });
+}
+
+export interface MarkdownEdit {
+  markdown: string;
+  selection: MarkdownSelection;
+}
+
+/** All offsets refer to normalized Markdown, and either selection direction is valid. */
+export function replaceMarkdownSelection(
+  markdown: string,
+  selection: MarkdownSelection,
+  text: string,
+  caretInText?: number
+): MarkdownEdit {
+  const md = normalizeMarkdown(markdown);
+  const start = Math.max(0, Math.min(md.length, selection.anchor, selection.focus));
+  const end = Math.max(start, Math.min(md.length, Math.max(selection.anchor, selection.focus)));
+  const inserted = normalizeMarkdown(text);
+  const caret = start + Math.max(0, Math.min(inserted.length, caretInText ?? inserted.length));
+  return {
+    markdown: md.slice(0, start) + inserted + md.slice(end),
+    selection: { anchor: caret, focus: caret },
+  };
+}
+
+/** Plain line breaks and list continuation use the same replacement operation. */
+export function enterMarkdown(
+  markdown: string,
+  selection: MarkdownSelection,
+  plain = false
+): MarkdownEdit {
+  const md = normalizeMarkdown(markdown);
+  const start = Math.min(selection.anchor, selection.focus);
+  const end = Math.max(selection.anchor, selection.focus);
+  const lineStart = md.slice(0, start).lastIndexOf('\n') + 1;
+  const lineEnd = md.indexOf('\n', start);
+  const line = md.slice(lineStart, lineEnd < 0 ? md.length : lineEnd);
+  let prefix = '';
+  let content = '';
+  let match: RegExpMatchArray | null;
+  if (!plain) {
+    if ((match = line.match(/^([\t ]*[-*+][\t ]+)\[[ xX]\]([\t ]+)(.*)$/))) {
+      prefix = match[1] + '[ ]' + match[2];
+      content = match[3];
+    } else if ((match = line.match(/^([\t ]*[-*+][\t ]+)(.*)$/))) {
+      prefix = match[1];
+      content = match[2];
+    } else if ((match = line.match(/^([\t ]*)(\d+)([.)])([\t ]+)(.*)$/))) {
+      prefix = match[1] + (BigInt(match[2]) + 1n).toString() + match[3] + match[4];
+      content = match[5];
+    } else if ((match = line.match(/^([\t ]*>+[\t ]?)(.*)$/))) {
+      prefix = match[1];
+      content = match[2];
+    }
+    const prefixLength = line.length - content.length;
+    if (prefix && start >= lineStart + prefixLength) {
+      if (!content.trim()) {
+        return replaceMarkdownSelection(md, {
+          anchor: lineStart,
+          focus: Math.max(end, lineStart + line.length),
+        }, '');
+      }
+    } else prefix = '';
   }
-  return lines.join('\n');
+  return replaceMarkdownSelection(md, selection, '\n' + prefix);
+}
+
+// Keep the existing context/fallback policy here so 06 can refine ambiguity independently.
+export function findAnchorRange(
+  markdown: string,
+  anchor: { quote: string; before: string; after: string }
+): { start: number; end: number } | null {
+  if (!anchor.quote) return null;
+  let start = -1;
+  if (anchor.before || anchor.after) {
+    start = markdown.indexOf(anchor.before + anchor.quote + anchor.after);
+    if (start >= 0) start += anchor.before.length;
+  }
+  if (start < 0) start = markdown.indexOf(anchor.quote);
+  return start < 0 ? null : { start, end: start + anchor.quote.length };
+}
+
+export function clearEditorHighlights(root: HTMLElement): void {
+  root.querySelectorAll('.anchor-hl').forEach((span) => {
+    span.replaceWith(...Array.from(span.childNodes));
+  });
+  root.normalize();
 }
 
 export function wrapRangeInEditor(
@@ -130,101 +243,29 @@ export function wrapRangeInEditor(
   cls: string,
   id: string
 ): void {
-  const blocks = root.querySelectorAll<HTMLElement>(':scope > .ln');
-
-  function findNodeAt(target: number): { node: Text; off: number } | null {
-    let consumed = 0;
-    for (let bi = 0; bi < blocks.length; bi++) {
-      if (bi > 0) consumed += 1;
-      const block = blocks[bi];
-      const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
-      let node: Text | null;
-      while ((node = walker.nextNode() as Text | null)) {
-        const t = node.textContent ?? '';
-        const real = t.length - (t.match(ZWSP_RE) || []).length;
-        if (consumed + real >= target) {
-          const want = target - consumed;
-          let domOff = 0;
-          let c = 0;
-          while (c < want && domOff < t.length) {
-            if (t[domOff] !== '​') c++;
-            domOff++;
-          }
-          return { node, off: domOff };
-        }
-        consumed += real;
-      }
+  if (start >= end) return;
+  const dom = readDOM(root);
+  for (const [node, offsets] of dom.boundaries) {
+    if (!(node instanceof Text)) continue;
+    if (!(node.textContent ?? '').replace(/\u200b/g, '')) continue;
+    // Repeating the same highlight does not grow nested wrappers.
+    let parent = node.parentElement;
+    let alreadyWrapped = false;
+    while (parent && parent !== root) {
+      if (id && parent.dataset.anchorId === id) alreadyWrapped = true;
+      parent = parent.parentElement;
     }
-    return null;
-  }
-
-  function blockOf(node: Node): HTMLElement | null {
-    let n: Node | null = node;
-    while (n && n !== root) {
-      const el = n as HTMLElement;
-      if (el.classList && el.classList.contains('ln')) return el;
-      n = n.parentNode;
-    }
-    return null;
-  }
-
-  function wrapSegment(node: Text, from: number, to: number): void {
-    if (from >= to) return;
-    const t = node.textContent ?? '';
-    const middle = t.slice(from, to);
-    if (middle.replace(ZWSP_RE, '') === '') return;
-    const before = t.slice(0, from);
-    const after = t.slice(to);
-    const span = document.createElement('span');
+    if (alreadyWrapped) continue;
+    const from = offsets.findIndex((offset) => offset >= start);
+    let to = offsets.length - 1;
+    while (to >= 0 && offsets[to] > end) to--;
+    if (from < 0 || to <= from || offsets[to] <= offsets[from]) continue;
+    const range = root.ownerDocument.createRange();
+    range.setStart(node, from);
+    range.setEnd(node, to);
+    const span = root.ownerDocument.createElement('span');
     span.className = cls;
     if (id) span.dataset.anchorId = id;
-    span.textContent = middle;
-    const parent = node.parentNode!;
-    if (before) parent.insertBefore(document.createTextNode(before), node);
-    parent.insertBefore(span, node);
-    if (after) parent.insertBefore(document.createTextNode(after), node);
-    parent.removeChild(node);
+    range.surroundContents(span);
   }
-
-  const a = findNodeAt(start);
-  const b = findNodeAt(end);
-  if (!a || !b) return;
-  if (a.node === b.node) {
-    wrapSegment(a.node, a.off, b.off);
-    return;
-  }
-  const blockA = blockOf(a.node);
-  const blockB = blockOf(b.node);
-  if (!blockA || !blockB) return;
-  const blockArr = Array.from(blocks);
-  const ia = blockArr.indexOf(blockA);
-  const ib = blockArr.indexOf(blockB);
-  if (ia < 0 || ib < 0 || ia > ib) return;
-
-  const segments: Array<{ node: Text; from: number; to: number }> = [];
-  for (let i = ia; i <= ib; i++) {
-    const block = blockArr[i];
-    const isFirst = i === ia;
-    const isLast = i === ib;
-    const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
-    let node: Text | null;
-    let started = !isFirst;
-    while ((node = walker.nextNode() as Text | null)) {
-      const len = (node.textContent ?? '').length;
-      if (!started) {
-        if (node !== a.node) continue;
-        started = true;
-        const to = isLast && node === b.node ? b.off : len;
-        segments.push({ node, from: a.off, to });
-        if (isLast && node === b.node) break;
-        continue;
-      }
-      if (isLast && node === b.node) {
-        segments.push({ node, from: 0, to: b.off });
-        break;
-      }
-      segments.push({ node, from: 0, to: len });
-    }
-  }
-  for (const seg of segments) wrapSegment(seg.node, seg.from, seg.to);
 }
