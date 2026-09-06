@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { encodeUrl } from '../lib/url-codec';
 import { roundAtUnix, unixMsAtRound } from '../lib/timecapsule';
 import type { DocState } from '../types';
@@ -13,6 +13,13 @@ interface Props {
 }
 
 type Preset = '1h' | '1d' | '1mo' | '1y' | 'custom';
+
+interface Result {
+  url: string;
+  size: number;
+  snapshot: string;
+  scheme: 'd' | 'e' | 'td' | 'te';
+}
 
 const PRESETS: { id: Preset; label: string; ms: number | null }[] = [
   { id: '1h', label: '+1 hour', ms: 3_600_000 },
@@ -66,10 +73,39 @@ export function ShareModal({ open, onClose, getState, onToast, onLearnMore }: Pr
   const [url, setUrl] = useState('');
   const [size, setSize] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<Result | null>(null);
+  const [, setClockNow] = useState(() => Date.now());
+  const generation = useRef(0);
+  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const invalidate = () => {
+    generation.current += 1;
+    if (debounceTimer.current !== null) {
+      clearTimeout(debounceTimer.current);
+      debounceTimer.current = null;
+    }
+    setResult(null);
+    setUrl('');
+    setSize(0);
+    setBusy(false);
+  };
+
+  const close = () => {
+    invalidate();
+    onClose();
+  };
+
+  // Keep expiry and the 30-second safety window visible while the dialog stays open.
+  useEffect(() => {
+    if (!open || !useTimelock) return;
+    const id = setInterval(() => setClockNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [open, useTimelock]);
 
   // Reset transient state every time the modal opens
   useEffect(() => {
     if (!open) return;
+    invalidate();
     setUsePassword(false);
     setUseTimelock(false);
     setPassword('');
@@ -96,63 +132,123 @@ export function ShareModal({ open, onClose, getState, onToast, onLearnMore }: Pr
   const round = unlockMs ? roundAtUnix(unlockMs) : null;
 
   const passwordMissing = usePassword && !password;
-  const timelockMissing = useTimelock && !unlockMs;
+  const timelockMissing = useTimelock && (!unlockMs || !targetMs || targetMs <= Date.now() + 30_000);
   const ready = !passwordMissing && !timelockMissing;
+
+  // Read the state for every render so a caller that keeps a stable getState callback
+  // is covered too. The serialized value is only a comparison key; the password is
+  // never included in this document snapshot or sent to logging/URL code.
+  const currentStateKey = (() => {
+    try {
+      return JSON.stringify(getState());
+    } catch {
+      return '';
+    }
+  })();
+  const currentSnapshot = useMemo(
+    () => JSON.stringify({ state: currentStateKey, usePassword, password, useTimelock, targetMs, unlockMs }),
+    [currentStateKey, usePassword, password, useTimelock, targetMs, unlockMs]
+  );
+  const latestSnapshot = useRef(currentSnapshot);
+  latestSnapshot.current = currentSnapshot;
+
+  const timelockStillValid = () =>
+    !useTimelock ||
+    (unlockMs !== null && targetMs !== null && targetMs > Date.now() + 30_000 && unlockMs > Date.now());
 
   // Build the URL whenever inputs settle.
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      invalidate();
+      return;
+    }
+    invalidate();
     if (!ready) {
-      setUrl('');
-      setSize(0);
       return;
     }
 
-    let cancelled = false;
-    (async () => {
-      setBusy(true);
+    if (!timelockStillValid()) {
+      onToast('Unlock time must be at least 30 seconds from now');
+      return;
+    }
+
+    const request = ++generation.current;
+    const snapshot = currentSnapshot;
+    setBusy(true);
+    debounceTimer.current = setTimeout(async () => {
+      debounceTimer.current = null;
       try {
-        const state = getState();
+        if (request !== generation.current || snapshot !== latestSnapshot.current) return;
+        if (!timelockStillValid()) {
+          onToast('Unlock time must be at least 30 seconds from now');
+          return;
+        }
+        const state: DocState = JSON.parse(currentStateKey);
         const opts: { password?: string | null; unlockMs?: number | null } = {};
         if (usePassword) opts.password = password;
         if (useTimelock) opts.unlockMs = unlockMs!;
         const hash = await encodeUrl(state, opts);
-        if (cancelled) return;
-        const u = window.location.origin + window.location.pathname + hash;
-        setUrl(u);
-        setSize(hash.length);
+        if (request !== generation.current || snapshot !== latestSnapshot.current) return;
+        if (!timelockStillValid()) {
+          setResult(null);
+          setUrl('');
+          setSize(0);
+          onToast('Unlock time must be at least 30 seconds from now');
+          return;
+        }
+        const scheme = hash.slice(1, hash.indexOf('=')) as Result['scheme'];
+        const next = { url: window.location.origin + window.location.pathname + hash, size: hash.length, snapshot, scheme };
+        setResult(next);
+        setUrl(next.url);
+        setSize(next.size);
       } catch (e) {
-        if (!cancelled) onToast("Couldn't build link: " + (e as Error).message);
+        if (request === generation.current) {
+          setResult(null);
+          setUrl('');
+          setSize(0);
+          onToast("Couldn't build link: " + (e instanceof Error ? e.message : 'Unknown error'));
+        }
       } finally {
-        if (!cancelled) setBusy(false);
+        if (request === generation.current) setBusy(false);
       }
-    })();
+    }, 250);
     return () => {
-      cancelled = true;
+      // Crypto already in flight cannot be aborted; make its eventual result inert.
+      if (generation.current === request) generation.current += 1;
+      if (debounceTimer.current !== null) {
+        clearTimeout(debounceTimer.current);
+        debounceTimer.current = null;
+      }
     };
-  }, [open, ready, usePassword, useTimelock, password, unlockMs, getState, onToast]);
+  }, [open, ready, usePassword, useTimelock, password, unlockMs, targetMs, currentSnapshot, getState, onToast]);
 
   if (!open) return null;
 
   const copy = async () => {
+    if (!result || result.snapshot !== currentSnapshot || !timelockStillValid()) {
+      invalidate();
+      if (useTimelock) onToast('Unlock time must be at least 30 seconds from now');
+      return;
+    }
     try {
-      await navigator.clipboard.writeText(url);
-      const toast = useTimelock
-        ? usePassword
+      await navigator.clipboard.writeText(result.url);
+      const toast = result.scheme === 'td' || result.scheme === 'te'
+        ? result.scheme === 'te'
           ? 'Encrypted time capsule copied'
           : 'Time capsule copied'
-        : usePassword
+        : result.scheme === 'e'
           ? 'Encrypted link copied'
           : 'Link copied';
       onToast(toast);
-      onClose();
+      close();
     } catch {
       onToast("Couldn't copy — select the box and copy manually");
     }
   };
 
-  const sizeKb = (size / 1024).toFixed(1);
-  const tooBig = size > 8000;
+  const resultIsCurrent = result?.snapshot === currentSnapshot && timelockStillValid();
+  const sizeKb = ((resultIsCurrent ? size : 0) / 1024).toFixed(1);
+  const tooBig = resultIsCurrent && size > 8000;
   const tooSoon = useTimelock && targetMs && targetMs <= Date.now() + 30_000;
 
   const linkPlaceholder = busy
@@ -161,10 +257,10 @@ export function ShareModal({ open, onClose, getState, onToast, onLearnMore }: Pr
       ? 'Enter a password…'
       : timelockMissing
         ? 'Pick an unlock time…'
-        : '';
+      : '';
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className="modal-backdrop" onClick={close}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h3>Share this document</h3>
         <p className="modal-sub">
@@ -179,10 +275,11 @@ export function ShareModal({ open, onClose, getState, onToast, onLearnMore }: Pr
               role="switch"
               aria-checked={usePassword}
               tabIndex={0}
-              onClick={() => setUsePassword((v) => !v)}
+              onClick={() => { invalidate(); setUsePassword((v) => !v); }}
               onKeyDown={(e) => {
                 if (e.key === ' ' || e.key === 'Enter') {
                   e.preventDefault();
+                  invalidate();
                   setUsePassword((v) => !v);
                 }
               }}
@@ -202,7 +299,7 @@ export function ShareModal({ open, onClose, getState, onToast, onLearnMore }: Pr
               type="password"
               value={password}
               autoFocus
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(e) => { invalidate(); setPassword(e.target.value); }}
               placeholder="Choose a password"
               style={{ marginTop: 10 }}
             />
@@ -216,10 +313,11 @@ export function ShareModal({ open, onClose, getState, onToast, onLearnMore }: Pr
               role="switch"
               aria-checked={useTimelock}
               tabIndex={0}
-              onClick={() => setUseTimelock((v) => !v)}
+              onClick={() => { invalidate(); setUseTimelock((v) => !v); }}
               onKeyDown={(e) => {
                 if (e.key === ' ' || e.key === 'Enter') {
                   e.preventDefault();
+                  invalidate();
                   setUseTimelock((v) => !v);
                 }
               }}
@@ -244,7 +342,7 @@ export function ShareModal({ open, onClose, getState, onToast, onLearnMore }: Pr
                     key={p.id}
                     type="button"
                     className={'preset' + (preset === p.id ? ' on' : '')}
-                    onClick={() => setPreset(p.id)}
+                    onClick={() => { invalidate(); setPreset(p.id); }}
                   >
                     {p.label}
                   </button>
@@ -256,7 +354,7 @@ export function ShareModal({ open, onClose, getState, onToast, onLearnMore }: Pr
                   type="datetime-local"
                   value={customLocal}
                   min={toLocalInput(Date.now() + 60_000)}
-                  onChange={(e) => setCustomLocal(e.target.value)}
+                  onChange={(e) => { invalidate(); setCustomLocal(e.target.value); }}
                   style={{ marginTop: 8 }}
                 />
               )}
@@ -267,7 +365,7 @@ export function ShareModal({ open, onClose, getState, onToast, onLearnMore }: Pr
                 </div>
               )}
 
-              {unlockMs && round && (
+              {unlockMs && round && !timelockMissing && (
                 <div className="tc-readout">
                   <div>
                     <b>Unlocks</b> {fmtDate(unlockMs)}
@@ -286,13 +384,13 @@ export function ShareModal({ open, onClose, getState, onToast, onLearnMore }: Pr
           <input
             type="text"
             readOnly
-            value={linkPlaceholder || url}
+            value={linkPlaceholder || (resultIsCurrent ? url : '')}
             onFocus={(e) => e.target.select()}
           />
           <button
             className="btn btn-primary"
             onClick={copy}
-            disabled={busy || !url || !ready}
+            disabled={busy || !url || !ready || !resultIsCurrent}
           >
             <IconCopy /> Copy
           </button>
@@ -310,7 +408,7 @@ export function ShareModal({ open, onClose, getState, onToast, onLearnMore }: Pr
 
         <div className="modal-actions">
           <div className="spacer" />
-          <button className="btn btn-ghost-bordered" onClick={onClose}>
+          <button className="btn btn-ghost-bordered" onClick={close}>
             Done
           </button>
         </div>
