@@ -15,7 +15,7 @@ default_agent: codex
 | 文件 | 优先级 | 难度 | agent | 模型 / Codex 推理强度 | 说明 |
 | --- | --- | --- | --- | --- | --- |
 | [01-share-boundaries.md](01-share-boundaries.md) | P1 | hard | codex，继承默认 | gpt-6-astra / max | 分享数据、大小与协议边界 |
-| [02-markdown-fidelity.md](02-markdown-fidelity.md) | P1 | medium | codex，继承默认 | gpt-6-astra / xhigh | 原始 Markdown 字符保真 |
+| [02-markdown-fidelity.md](done/02-markdown-fidelity.md) | P1 | medium | codex，继承默认 | gpt-6-astra / xhigh | 已完成：原始 Markdown 字符保真 |
 | [03-editor-input.md](03-editor-input.md) | P1 | hard | codex，继承默认 | gpt-6-astra / max | 输入、选区、评论高亮生命周期 |
 | [04-local-persistence.md](04-local-persistence.md) | P1 | hard | codex，继承默认 | gpt-6-astra / max | 保存与 storage 失败恢复 |
 | [05-import-lifecycle.md](05-import-lifecycle.md) | P1 | hard | codex，继承默认 | gpt-6-astra / max | 初始化、解锁取消、只读与文档切换 |
@@ -30,7 +30,7 @@ default_agent: codex
 ## 文件
 
 1. `01-share-boundaries.md` — 依赖：无。
-2. `02-markdown-fidelity.md` — 依赖：无。
+2. [02-markdown-fidelity.md](done/02-markdown-fidelity.md) — 已完成；依赖：无。
 3. `03-editor-input.md` — 依赖 `02-markdown-fidelity.md`。
 4. `04-local-persistence.md` — 依赖 `01-share-boundaries.md`。
 5. `05-import-lifecycle.md` — 依赖 `03-editor-input.md`、`04-local-persistence.md`。
