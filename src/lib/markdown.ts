@@ -1,8 +1,16 @@
 /* Markdown decoration: turn raw markdown into per-line decorated HTML.
-   Source-of-truth offsets match raw markdown 1:1 (syntax markers stay visible). */
+   Line endings normalize to LF; otherwise source-of-truth offsets match raw
+   markdown 1:1 (syntax markers stay visible, empty lines use a ZWSP placeholder). */
 
+/** Escape HTML text and quoted attribute values. This does not validate URLs or
+ *  CSS, or make values safe in unquoted attributes or executable contexts. */
 export function escapeHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 export function inlineHtml(text: string): string {
@@ -64,66 +72,69 @@ function classifyLine(line: string, inFence: number | null): LineInfo {
     return { kind: 'hr', cls: 'hr', inline: '<span class="syn">' + escapeHtml(line) + '</span>' };
   }
   let m: RegExpMatchArray | null;
-  if ((m = line.match(/^(#{1,6})\s+(.*)$/))) {
+  if ((m = line.match(/^(#{1,6})(\s+)(.*)$/))) {
     const level = m[1].length;
     return {
       kind: 'h' + level,
       cls: 'h' + level,
-      inline: '<span class="syn">' + m[1] + ' </span>' + inlineHtml(m[2]),
+      inline: '<span class="syn">' + escapeHtml(m[1] + m[2]) + '</span>' + inlineHtml(m[3]),
     };
   }
-  if ((m = line.match(/^(\s*)(>+)\s?(.*)$/)) && !line.startsWith('> ![]')) {
+  if ((m = line.match(/^(\s*)(>+)(\s?)(.*)$/)) && !line.startsWith('> ![]')) {
     return {
       kind: 'quote',
       cls: 'quote',
-      inline: '<span class="syn">' + escapeHtml(m[1] + m[2] + ' ') + '</span>' + inlineHtml(m[3]),
+      inline: '<span class="syn">' + escapeHtml(m[1] + m[2] + m[3]) + '</span>' + inlineHtml(m[4]),
     };
   }
-  if ((m = line.match(/^(\s*)([-*+])\s\[( |x|X)\]\s(.*)$/))) {
-    const done = m[3] !== ' ';
+  if ((m = line.match(/^(\s*)([-*+])(\s)\[( |x|X)\](\s)(.*)$/))) {
+    const done = m[4] !== ' ';
     return {
       kind: 'task',
       cls: 'list task' + (done ? ' done' : ''),
       inline:
         '<span class="syn syn-bullet">' +
-        escapeHtml(m[1] + m[2]) +
-        ' </span>' +
+        escapeHtml(m[1] + m[2] + m[3]) +
+        '</span>' +
         '<span class="syn-task">[' +
-        m[3] +
-        ']</span> ' +
-        inlineHtml(m[4]),
+        m[4] +
+        ']</span>' +
+        escapeHtml(m[5]) +
+        inlineHtml(m[6]),
     };
   }
-  if ((m = line.match(/^(\s*)([-*+])\s+(.*)$/))) {
+  if ((m = line.match(/^(\s*)([-*+])(\s+)(.*)$/))) {
     return {
       kind: 'list',
       cls: 'list',
       inline:
         '<span class="syn syn-bullet">' +
-        escapeHtml(m[1] + m[2] + ' ') +
+        escapeHtml(m[1] + m[2] + m[3]) +
         '</span>' +
-        inlineHtml(m[3]),
+        inlineHtml(m[4]),
     };
   }
-  if ((m = line.match(/^(\s*)(\d+)([.)])\s+(.*)$/))) {
+  if ((m = line.match(/^(\s*)(\d+)([.)])(\s+)(.*)$/))) {
     return {
       kind: 'olist',
       cls: 'list',
       inline:
         '<span class="syn syn-bullet">' +
-        escapeHtml(m[1] + m[2] + m[3]) +
-        ' </span>' +
-        inlineHtml(m[4]),
+        escapeHtml(m[1] + m[2] + m[3] + m[4]) +
+        '</span>' +
+        inlineHtml(m[5]),
     };
   }
-  if (line.trim() === '') {
+  if (line === '') {
     return { kind: 'empty', cls: 'empty', inline: '​' };
   }
   return { kind: 'p', cls: 'p', inline: inlineHtml(line) };
 }
 
 export function renderDecorated(md: string): string {
-  const lines = md.split('\n');
+  // Normalize CRLF and lone CR before HTML parsing, which would otherwise turn
+  // CR into an extra LF inside a .ln block. getMarkdown joins the blocks with LF.
+  const lines = md.split(/\r\n?|\n/);
   let html = '';
   let inFence: number | null = null;
   for (let i = 0; i < lines.length; i++) {
