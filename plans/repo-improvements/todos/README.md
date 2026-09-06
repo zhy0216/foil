@@ -22,7 +22,7 @@ default_agent: codex
 | [06-comment-layout.md](06-comment-layout.md) | P1 | hard | codex，继承默认 | gpt-6-astra / max | 评论定位与实际尺寸布局 |
 | [07-timecapsule-network.md](07-timecapsule-network.md) | P1 | hard | codex，继承默认 | gpt-6-astra / max | drand 超时、回退与类型 |
 | [08-share-generation.md](08-share-generation.md) | P1 | medium | codex，继承默认 | gpt-6-astra / xhigh | 链接结果必须兑现当前选项 |
-| [09-toolchain-ci.md](09-toolchain-ci.md) | P1 | hard | codex，继承默认 | gpt-6-astra / max | 依赖漏洞、相容工具链及 CI |
+| [09-toolchain-ci.md](done/09-toolchain-ci.md) | P1 | hard | codex，继承默认 | gpt-6-astra / max | 已完成：依赖漏洞、相容工具链及 CI |
 | [10-accessible-dialogs.md](10-accessible-dialogs.md) | P2 | medium | codex，继承默认 | gpt-6-astra / xhigh | 弹层、菜单、控件与键盘 |
 | [11-documentation.md](11-documentation.md) | P2 | easy | codex，继承默认 | gpt-6-astra / high | 实现、隐私与历史审计文档一致 |
 | [12-browser-regressions.md](12-browser-regressions.md) | P1 | hard | codex，继承默认 | gpt-6-astra / max | Chromium/WebKit 完整行为回归 |
@@ -37,7 +37,7 @@ default_agent: codex
 6. `06-comment-layout.md` — 依赖 `05-import-lifecycle.md`。
 7. `07-timecapsule-network.md` — 依赖：无。
 8. `08-share-generation.md` — 依赖 `01-share-boundaries.md`。
-9. `09-toolchain-ci.md` — 依赖：无。
+9. [done/09-toolchain-ci.md](done/09-toolchain-ci.md) — 已完成；依赖：无。
 10. `10-accessible-dialogs.md` — 依赖 `06-comment-layout.md`、`08-share-generation.md`。
 11. `11-documentation.md` — 依赖 `01-share-boundaries.md`、`02-markdown-fidelity.md`、`03-editor-input.md`、`04-local-persistence.md`、`05-import-lifecycle.md`、`06-comment-layout.md`、`07-timecapsule-network.md`、`08-share-generation.md`、`09-toolchain-ci.md`、`10-accessible-dialogs.md`。
 12. `12-browser-regressions.md` — 依赖 `01-share-boundaries.md`、`02-markdown-fidelity.md`、`03-editor-input.md`、`04-local-persistence.md`、`05-import-lifecycle.md`、`06-comment-layout.md`、`07-timecapsule-network.md`、`08-share-generation.md`、`09-toolchain-ci.md`、`10-accessible-dialogs.md`。

@@ -1,0 +1,52 @@
+name: Verify Foil
+description: Install the pinned toolchain, audit dependencies, and check the static app.
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v6
+      with:
+        node-version-file: .node-version
+
+    - uses: oven-sh/setup-bun@v2
+      with:
+        bun-version-file: package.json
+
+    - run: bun install --frozen-lockfile
+      shell: bash
+
+    - run: bun run typecheck
+      shell: bash
+
+    - run: bun run test
+      shell: bash
+
+    - run: bun audit
+      shell: bash
+      env:
+        npm_config_registry: https://registry.npmjs.org
+
+    - run: bun audit --prod
+      shell: bash
+      env:
+        npm_config_registry: https://registry.npmjs.org
+
+    - name: Install Chromium and WebKit
+      run: ./node_modules/.bin/playwright install --with-deps chromium webkit
+      shell: bash
+
+    # test:e2e builds dist before starting the CSP-protected static preview.
+    - name: Build and run browser smoke tests
+      run: bun run test:e2e
+      shell: bash
+
+    - name: Keep browser failure diagnostics
+      if: failure()
+      uses: actions/upload-artifact@v5
+      with:
+        name: playwright-results
+        path: |
+          playwright-report/
+          test-results/
+        if-no-files-found: ignore
+        retention-days: 7
