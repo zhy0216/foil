@@ -3,14 +3,23 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useRef,
 } from 'react';
 import { renderDecorated } from '../lib/markdown';
 import {
-  getCharOffset,
-  setCharOffset,
+  clearEditorHighlights,
+  enterMarkdown,
+  findAnchorRange,
   getMarkdown,
+  getRangeOffsets,
+  getSelectionOffsets,
+  normalizeMarkdown,
+  replaceMarkdownSelection,
+  setSelectionOffsets,
   wrapRangeInEditor,
+  type MarkdownEdit,
+  type MarkdownSelection,
 } from '../lib/editor-dom';
 import type { CommentThread, SelectionInfo } from '../types';
 
@@ -19,6 +28,12 @@ export interface EditorHandle {
   setMarkdown: (md: string) => void;
   focus: () => void;
   el: () => HTMLDivElement | null;
+  // Toolbar commands use the live selection, or the last editor selection after
+  // toolbar focus. An explicit saved selection can also be supplied by the caller.
+  getSelection: () => MarkdownSelection | null;
+  replaceSelection: (text: string, selection?: MarkdownSelection) => boolean;
+  wrapSelection: (wrap: string, selection?: MarkdownSelection) => boolean;
+  insertLink: (selection?: MarkdownSelection) => boolean;
 }
 
 interface EditorProps {
@@ -31,301 +46,336 @@ interface EditorProps {
   onAnchorClick?: (id: string) => void;
 }
 
-export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(props, ref) {
-  const {
-    initialMarkdown,
-    onChange,
-    onSelectionChange,
-    readOnly,
-    anchors,
-    activeAnchorId,
-    onAnchorClick,
-  } = props;
-  const elRef = useRef<HTMLDivElement>(null);
-  const lastMd = useRef<string>(initialMarkdown || '');
-  const composing = useRef<boolean>(false);
+interface Snapshot {
+  markdown: string;
+  selection: MarkdownSelection | null;
+}
 
-  useEffect(() => {
+function plainTransfer(data: DataTransfer | null): string | null {
+  if (!data || data.files?.length || Array.from(data.items ?? []).some((item) => item.kind === 'file')) {
+    return null;
+  }
+  // Do not fall back to HTML, URLs, or reading files as markup.
+  const text = data.getData('text/plain');
+  return text ? normalizeMarkdown(text) : null;
+}
+
+function dropSelection(el: HTMLElement, x: number, y: number): MarkdownSelection | null {
+  const doc = el.ownerDocument as Document & {
+    caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null;
+    caretRangeFromPoint?: (x: number, y: number) => Range | null;
+  };
+  const point = doc.caretPositionFromPoint?.(x, y);
+  const range = point ? {
+    startContainer: point.offsetNode, startOffset: point.offset,
+    endContainer: point.offsetNode, endOffset: point.offset,
+  } : doc.caretRangeFromPoint?.(x, y);
+  if (!range) return null;
+  const offsets = getRangeOffsets(el, range);
+  return offsets ? { anchor: offsets.start, focus: offsets.start } : null;
+}
+
+export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(props, ref) {
+  const { initialMarkdown, onChange, onSelectionChange, readOnly, anchors, activeAnchorId, onAnchorClick } = props;
+  const elRef = useRef<HTMLDivElement>(null);
+  const lastMd = useRef(normalizeMarkdown(initialMarkdown || ''));
+  const initialized = useRef(false);
+  const composing = useRef(false);
+  const compositionFlush = useRef(false);
+  const pendingReplacement = useRef<string | null>(null);
+  const previousProp = useRef(initialMarkdown);
+  const savedSelection = useRef<MarkdownSelection | null>(null);
+  const beforeInputSelection = useRef<MarkdownSelection | null>(null);
+  const undo = useRef<Snapshot[]>([]);
+  const redo = useRef<Snapshot[]>([]);
+  const decorated = useRef<{ anchors: CommentThread[]; active: string | null } | null>(null);
+
+  const refreshHighlights = useCallback((force = false) => {
+    const el = elRef.current;
+    if (!el || composing.current || compositionFlush.current) return;
+    if (!force && decorated.current?.anchors === anchors && decorated.current.active === activeAnchorId) return;
+    const selection = getSelectionOffsets(el);
+    clearEditorHighlights(el);
+    const md = getMarkdown(el);
+    for (const anchor of anchors) {
+      const range = findAnchorRange(md, anchor);
+      if (range) wrapRangeInEditor(el, range.start, range.end,
+        'anchor-hl' + (anchor.id === activeAnchorId ? ' active' : ''), anchor.id);
+    }
+    decorated.current = { anchors, active: activeAnchorId };
+    if (selection) setSelectionOffsets(el, selection);
+  }, [anchors, activeAnchorId]);
+
+  // Every DOM rebuild goes through this lifecycle, including imperative updates.
+  const paint = useCallback((md: string, selection: MarkdownSelection | null) => {
     const el = elRef.current;
     if (!el) return;
-    el.innerHTML = renderDecorated(initialMarkdown || '');
-    lastMd.current = initialMarkdown || '';
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    el.innerHTML = renderDecorated(md);
+    lastMd.current = md;
+    initialized.current = true;
+    el.classList.toggle('is-empty', !md);
+    refreshHighlights(true);
+    if (selection) setSelectionOffsets(el, selection);
+    savedSelection.current = selection ? getSelectionOffsets(el) : null;
+  }, [refreshHighlights]);
+
+  const replaceDocument = useCallback((md: string) => {
+    const el = elRef.current;
+    if (!el) return;
+    undo.current = [];
+    redo.current = [];
+    beforeInputSelection.current = null;
+    paint(normalizeMarkdown(md), getSelectionOffsets(el));
+  }, [paint]);
+
+  useLayoutEffect(() => {
+    const changedProp = previousProp.current !== initialMarkdown;
+    previousProp.current = initialMarkdown;
+    if (readOnly && (composing.current || compositionFlush.current)) {
+      composing.current = false;
+      compositionFlush.current = false;
+      const md = changedProp ? initialMarkdown : pendingReplacement.current ?? lastMd.current;
+      pendingReplacement.current = null;
+      replaceDocument(md);
+      return;
+    }
+    if (composing.current || compositionFlush.current) {
+      if (changedProp) pendingReplacement.current = normalizeMarkdown(initialMarkdown || '');
+      return;
+    }
+    const md = normalizeMarkdown(initialMarkdown || '');
+    if (!initialized.current || (changedProp && md !== lastMd.current)) replaceDocument(md);
+    else refreshHighlights();
+    elRef.current?.classList.toggle('is-empty', !lastMd.current);
+  }, [initialMarkdown, replaceDocument, refreshHighlights, readOnly]);
+
+  const commit = useCallback((edit: MarkdownEdit, before: MarkdownSelection | null) => {
+    const changed = edit.markdown !== lastMd.current;
+    if (changed) {
+      // Bounded checkpoints cover the transactions that replace the DOM. Native
+      // keystrokes and IME commits enter the same history; no persistent history.
+      undo.current.push({ markdown: lastMd.current, selection: before });
+      if (undo.current.length > 100) undo.current.shift();
+      redo.current = [];
+    }
+    beforeInputSelection.current = null;
+    paint(edit.markdown, edit.selection);
+    if (changed) onChange?.(edit.markdown);
+  }, [paint, onChange]);
+
+  const syncInput = useCallback((force = false) => {
+    const el = elRef.current;
+    if (!el || readOnly || composing.current || compositionFlush.current) return;
+    const md = getMarkdown(el);
+    if (md === lastMd.current) {
+      beforeInputSelection.current = null;
+      if (force) paint(md, getSelectionOffsets(el));
+      return;
+    }
+    const selection = getSelectionOffsets(el) ?? { anchor: md.length, focus: md.length };
+    commit({ markdown: md, selection }, beforeInputSelection.current ?? savedSelection.current ?? selection);
+  }, [readOnly, paint, commit]);
+
+  const commandSelection = useCallback((explicit?: MarkdownSelection): MarkdownSelection | null => {
+    const el = elRef.current;
+    if (!el) return null;
+    if (explicit) return explicit;
+    const live = getSelectionOffsets(el);
+    if (live) return live;
+    const sel = el.ownerDocument.getSelection();
+    // A partially external selection must never reuse a stale editor selection.
+    if (sel?.rangeCount && (el.contains(sel.anchorNode) || el.contains(sel.focusNode))) return null;
+    return savedSelection.current;
   }, []);
 
-  useEffect(() => {
+  const applyReplacement = useCallback((text: string, explicit?: MarkdownSelection) => {
     const el = elRef.current;
-    if (!el) return;
-    if ((initialMarkdown || '') === lastMd.current) return;
-    el.innerHTML = renderDecorated(initialMarkdown || '');
-    lastMd.current = initialMarkdown || '';
-  }, [initialMarkdown]);
+    if (!el || readOnly || composing.current || compositionFlush.current) return false;
+    const selection = commandSelection(explicit);
+    if (!selection) return false;
+    el.focus();
+    commit(replaceMarkdownSelection(getMarkdown(el), selection, text), selection);
+    return true;
+  }, [readOnly, commandSelection, commit]);
 
-  const reRender = useCallback(() => {
+  const formatSelection = useCallback((wrap: string | null, explicit?: MarkdownSelection) => {
     const el = elRef.current;
-    if (!el) return;
+    if (!el || readOnly || composing.current || compositionFlush.current) return false;
+    const selection = commandSelection(explicit);
+    if (!selection || selection.anchor === selection.focus) return false;
     const md = getMarkdown(el);
-    if (md === lastMd.current) return;
-    const off = getCharOffset(el);
-    el.innerHTML = renderDecorated(md);
-    if (document.activeElement === el) setCharOffset(el, off);
-    lastMd.current = md;
-    el.classList.toggle('is-empty', md.length === 0);
-    onChange?.(md);
-  }, [onChange]);
+    const text = md.slice(Math.min(selection.anchor, selection.focus), Math.max(selection.anchor, selection.focus));
+    const inserted = wrap === null ? `[${text}](url)` : wrap + text + wrap;
+    el.focus();
+    commit(replaceMarkdownSelection(md, selection, inserted, wrap === null ? text.length + 3 : undefined), selection);
+    return true;
+  }, [readOnly, commandSelection, commit]);
+
+  const insertNewline = useCallback((plain: boolean, selection?: MarkdownSelection) => {
+    const el = elRef.current;
+    if (!el || readOnly || composing.current || compositionFlush.current) return;
+    const current = selection ?? getSelectionOffsets(el);
+    if (current) commit(enterMarkdown(getMarkdown(el), current, plain), current);
+  }, [readOnly, commit]);
+
+  const restoreHistory = useCallback((forward: boolean) => {
+    const el = elRef.current;
+    if (!el || readOnly || composing.current || compositionFlush.current) return;
+    const source = forward ? redo.current : undo.current;
+    const target = forward ? undo.current : redo.current;
+    const snapshot = source.pop();
+    if (!snapshot) return;
+    target.push({ markdown: lastMd.current, selection: getSelectionOffsets(el) ?? savedSelection.current });
+    beforeInputSelection.current = null;
+    paint(snapshot.markdown, snapshot.selection);
+    onChange?.(snapshot.markdown);
+  }, [readOnly, paint, onChange]);
 
   useImperativeHandle(ref, () => ({
-    getMarkdown: () => getMarkdown(elRef.current!),
-    setMarkdown: (md: string) => {
-      const el = elRef.current;
-      if (!el) return;
-      el.innerHTML = renderDecorated(md || '');
-      lastMd.current = md || '';
-      el.classList.toggle('is-empty', !md);
+    getMarkdown: () => elRef.current ? getMarkdown(elRef.current) : lastMd.current,
+    setMarkdown: (md) => {
+      if (readOnly) return;
+      if (composing.current || compositionFlush.current) pendingReplacement.current = normalizeMarkdown(md || '');
+      else replaceDocument(md || '');
     },
     focus: () => elRef.current?.focus(),
     el: () => elRef.current,
+    getSelection: () => commandSelection(),
+    replaceSelection: applyReplacement,
+    wrapSelection: (wrap, selection) => formatSelection(wrap, selection),
+    insertLink: (selection) => formatSelection(null, selection),
   }));
 
-  const onInput = useCallback(() => {
-    if (composing.current) return;
-    reRender();
-  }, [reRender]);
-
-  const onCompositionEnd = useCallback(() => {
-    composing.current = false;
-    reRender();
-  }, [reRender]);
-
-  const insertAtCursor = useCallback(
-    (el: HTMLElement, md: string, off: number, ins: string) => {
-      const next = md.slice(0, off) + ins + md.slice(off);
-      el.innerHTML = renderDecorated(next);
-      setCharOffset(el, off + ins.length);
-      lastMd.current = next;
-      onChange?.(next);
-    },
-    [onChange]
-  );
-
-  const replaceCurrentLine = useCallback(
-    (md: string, start: number, end: number, replacement: string) => {
-      const next = md.slice(0, start) + replacement + md.slice(end);
-      const el = elRef.current;
-      if (!el) return;
-      el.innerHTML = renderDecorated(next);
-      setCharOffset(el, start + replacement.length);
-      lastMd.current = next;
-      onChange?.(next);
-    },
-    [onChange]
-  );
-
-  const wrapSelection = useCallback(
-    (el: HTMLElement, wrap: string | null, isLink: boolean) => {
-      const sel = window.getSelection();
-      if (!sel || !sel.rangeCount) return;
-      const range = sel.getRangeAt(0);
-      if (!el.contains(range.startContainer)) return;
-      const md = getMarkdown(el);
-      const startOff = getCharOffset(el);
-      if (range.collapsed) return;
-      const endRange = range.cloneRange();
-      endRange.collapse(false);
-      sel.removeAllRanges();
-      sel.addRange(endRange);
-      const endOff = getCharOffset(el);
-      sel.removeAllRanges();
-      sel.addRange(range);
-      if (startOff == null || endOff == null) return;
-      const a = Math.min(startOff, endOff);
-      const b = Math.max(startOff, endOff);
-      const sliced = md.slice(a, b);
-      if (isLink) {
-        const next = md.slice(0, a) + '[' + sliced + '](url)' + md.slice(b);
-        el.innerHTML = renderDecorated(next);
-        setCharOffset(el, a + sliced.length + 3);
-        lastMd.current = next;
-        onChange?.(next);
-      } else if (wrap) {
-        const next = md.slice(0, a) + wrap + sliced + wrap + md.slice(b);
-        el.innerHTML = renderDecorated(next);
-        setCharOffset(el, a + wrap.length + sliced.length + wrap.length);
-        lastMd.current = next;
-        onChange?.(next);
+  // Use the native event: React 18's beforeinput plugin does not expose all of
+  // InputEvent's inputType/targetRanges paths (e.g. mobile Enter and menu undo).
+  useEffect(() => {
+    const el = elRef.current;
+    if (!el) return;
+    const handler = (event: InputEvent) => {
+      if (readOnly) { event.preventDefault(); return; }
+      if (composing.current || compositionFlush.current || event.isComposing) return;
+      beforeInputSelection.current = getSelectionOffsets(el);
+      if (!event.cancelable) return;
+      const type = event.inputType;
+      if (type === 'historyUndo' || type === 'historyRedo') {
+        event.preventDefault();
+        restoreHistory(type === 'historyRedo');
+      } else if (type === 'insertParagraph' || type === 'insertLineBreak') {
+        event.preventDefault();
+        insertNewline(type === 'insertLineBreak');
+      } else if (type === 'formatBold' || type === 'formatItalic') {
+        event.preventDefault();
+        formatSelection(type === 'formatBold' ? '**' : '*');
+      } else if (type === 'insertFromPaste' || type === 'insertFromDrop' || type === 'insertFromPasteAsQuotation') {
+        event.preventDefault();
+        const text = plainTransfer(event.dataTransfer);
+        const range = event.getTargetRanges?.()[0];
+        const offsets = range ? getRangeOffsets(el, range) : null;
+        const selection = offsets ? { anchor: offsets.start, focus: offsets.end } :
+          (type === 'insertFromDrop' || range ? null : getSelectionOffsets(el));
+        if (text != null && selection) applyReplacement(text, selection);
       }
-    },
-    [onChange]
-  );
+    };
+    el.addEventListener('beforeinput', handler);
+    return () => el.removeEventListener('beforeinput', handler);
+  }, [readOnly, restoreHistory, insertNewline, formatSelection, applyReplacement]);
 
-  const onKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLDivElement>) => {
-      if (e.key === 'Enter' && !e.shiftKey && !e.metaKey && !e.ctrlKey) {
-        const el = elRef.current;
-        if (!el) return;
-        const off = getCharOffset(el);
-        const md = getMarkdown(el);
-        if (off == null) return;
-        const before = md.slice(0, off);
-        const after = md.slice(off);
-        const lineStart = before.lastIndexOf('\n') + 1;
-        const lineEnd = after.indexOf('\n');
-        const curLine = md.slice(
-          lineStart,
-          off + (lineEnd === -1 ? after.length : lineEnd)
-        );
-        let m: RegExpMatchArray | null;
-        if ((m = curLine.match(/^(\s*)([-*+])\s\[( |x|X)\]\s(.*)$/))) {
-          e.preventDefault();
-          if (!m[4]) replaceCurrentLine(md, lineStart, lineStart + curLine.length, '');
-          else insertAtCursor(el, md, off, '\n' + m[1] + m[2] + ' [ ] ');
-          return;
-        }
-        if ((m = curLine.match(/^(\s*)([-*+])\s+(.*)$/))) {
-          e.preventDefault();
-          if (!m[3]) replaceCurrentLine(md, lineStart, lineStart + curLine.length, '');
-          else insertAtCursor(el, md, off, '\n' + m[1] + m[2] + ' ');
-          return;
-        }
-        if ((m = curLine.match(/^(\s*)(\d+)([.)])\s+(.*)$/))) {
-          e.preventDefault();
-          if (!m[4]) replaceCurrentLine(md, lineStart, lineStart + curLine.length, '');
-          else
-            insertAtCursor(
-              el,
-              md,
-              off,
-              '\n' + m[1] + (parseInt(m[2], 10) + 1) + m[3] + ' '
-            );
-          return;
-        }
-        if ((m = curLine.match(/^(\s*>+)\s(.*)$/))) {
-          e.preventDefault();
-          if (!m[2]) replaceCurrentLine(md, lineStart, lineStart + curLine.length, '');
-          else insertAtCursor(el, md, off, '\n' + m[1] + ' ');
-          return;
-        }
-      }
-      if ((e.metaKey || e.ctrlKey) && !e.shiftKey) {
-        const k = e.key.toLowerCase();
-        if (k === 'b' || k === 'i' || k === 'k') {
-          e.preventDefault();
-          if (elRef.current)
-            wrapSelection(elRef.current, k === 'b' ? '**' : k === 'i' ? '*' : null, k === 'k');
-        }
-      }
-    },
-    [insertAtCursor, replaceCurrentLine, wrapSelection]
-  );
+  const onKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (composing.current || compositionFlush.current || event.nativeEvent.isComposing || event.keyCode === 229) return;
+    const command = (event.metaKey || event.ctrlKey) && !event.altKey;
+    const key = event.key.toLowerCase();
+    if (readOnly) {
+      if (event.key === 'Enter' || (command && ['b', 'i', 'k', 'z', 'y'].includes(key))) event.preventDefault();
+      return;
+    }
+    if (event.key === 'Enter' && !command && !event.altKey) {
+      event.preventDefault();
+      insertNewline(event.shiftKey);
+    } else if (command && (key === 'z' || (key === 'y' && !event.shiftKey))) {
+      event.preventDefault();
+      restoreHistory(event.shiftKey || key === 'y');
+    } else if (command && !event.shiftKey && ['b', 'i', 'k'].includes(key)) {
+      event.preventDefault();
+      formatSelection(key === 'k' ? null : key === 'b' ? '**' : '*');
+    }
+  }, [readOnly, insertNewline, restoreHistory, formatSelection]);
 
   useEffect(() => {
-    if (!onSelectionChange) return;
     const handler = () => {
       const el = elRef.current;
       if (!el) return;
-      const sel = window.getSelection();
-      if (!sel || !sel.rangeCount) {
-        onSelectionChange(null);
-        return;
-      }
-      const r = sel.getRangeAt(0);
-      if (!el.contains(r.startContainer)) {
-        onSelectionChange(null);
-        return;
-      }
-      if (r.collapsed) {
-        onSelectionChange(null);
-        return;
-      }
-      const rect = r.getBoundingClientRect();
-      const text = sel.toString();
-      const range = sel.getRangeAt(0);
-      const startRange = range.cloneRange();
-      startRange.collapse(true);
-      sel.removeAllRanges();
-      sel.addRange(startRange);
-      const startOff = getCharOffset(el);
-      const endRange = range.cloneRange();
-      endRange.collapse(false);
-      sel.removeAllRanges();
-      sel.addRange(endRange);
-      const endOff = getCharOffset(el);
-      sel.removeAllRanges();
-      sel.addRange(range);
-      onSelectionChange({ text, rect, startOff, endOff });
+      const selection = getSelectionOffsets(el);
+      if (selection) savedSelection.current = selection;
+      if (!selection || selection.anchor === selection.focus) { onSelectionChange?.(null); return; }
+      const startOff = Math.min(selection.anchor, selection.focus);
+      const endOff = Math.max(selection.anchor, selection.focus);
+      const range = el.ownerDocument.getSelection()!.getRangeAt(0);
+      onSelectionChange?.({
+        text: getMarkdown(el).slice(startOff, endOff),
+        rect: range.getBoundingClientRect(),
+        startOff, endOff,
+      });
     };
     document.addEventListener('selectionchange', handler);
     return () => document.removeEventListener('selectionchange', handler);
   }, [onSelectionChange]);
 
-  // Anchor highlights
-  useEffect(() => {
-    const el = elRef.current;
-    if (!el || !anchors) return;
-    el.querySelectorAll('.anchor-hl').forEach((span) => {
-      const parent = span.parentNode;
-      if (!parent) return;
-      while (span.firstChild) parent.insertBefore(span.firstChild, span);
-      parent.removeChild(span);
-      (parent as Element).normalize?.();
-    });
-    const md = getMarkdown(el);
-    anchors.forEach((a) => {
-      if (!a.quote) return;
-      let idx = -1;
-      if (a.before || a.after) {
-        const probe = (a.before || '') + a.quote + (a.after || '');
-        idx = md.indexOf(probe);
-        if (idx >= 0) idx += (a.before || '').length;
-      }
-      if (idx < 0) idx = md.indexOf(a.quote);
-      if (idx < 0) return;
-      try {
-        wrapRangeInEditor(
-          el,
-          idx,
-          idx + a.quote.length,
-          'anchor-hl' + (a.id === activeAnchorId ? ' active' : ''),
-          a.id
-        );
-      } catch {
-        /* skip if range can't be resolved */
-      }
-    });
-  }, [anchors, activeAnchorId]);
-
-  // Delegated click handler — tapping a highlight focuses its thread.
-  useEffect(() => {
-    const el = elRef.current;
-    if (!el || !onAnchorClick) return;
-    const handler = (e: MouseEvent) => {
-      const target = (e.target as HTMLElement | null)?.closest<HTMLElement>('.anchor-hl');
-      if (!target) return;
-      const id = target.dataset.anchorId;
-      if (id) onAnchorClick(id);
-    };
-    el.addEventListener('click', handler);
-    return () => el.removeEventListener('click', handler);
-  }, [onAnchorClick]);
-
   return (
     <div
       ref={elRef}
-      className={
-        'editor' +
-        (readOnly ? ' readonly' : '') +
-        ((initialMarkdown || '').length === 0 ? ' is-empty' : '')
-      }
+      className={'editor' + (readOnly ? ' readonly' : '') + (!lastMd.current ? ' is-empty' : '')}
       contentEditable={!readOnly}
       suppressContentEditableWarning
       spellCheck
       data-placeholder="Start writing — Markdown shortcuts work as you type. Try # heading, **bold**, - list, > quote…"
-      onInput={onInput}
+      onInput={(event) => { if (!(event.nativeEvent as InputEvent).isComposing) syncInput(); }}
       onCompositionStart={() => {
+        if (readOnly) return;
         composing.current = true;
+        compositionFlush.current = false;
+        beforeInputSelection.current = elRef.current ? getSelectionOffsets(elRef.current) : null;
       }}
-      onCompositionEnd={onCompositionEnd}
+      onCompositionEnd={() => {
+        if (readOnly) { composing.current = false; return; }
+        composing.current = false;
+        compositionFlush.current = true;
+        // Read once after the browser's final composition input, whichever order
+        // it uses for compositionend/input. A duplicate trailing input is a no-op.
+        queueMicrotask(() => {
+          if (!compositionFlush.current || composing.current || !elRef.current) return;
+          compositionFlush.current = false;
+          if (pendingReplacement.current != null) {
+            const md = pendingReplacement.current;
+            pendingReplacement.current = null;
+            replaceDocument(md);
+          } else syncInput(true);
+        });
+      }}
       onKeyDown={onKeyDown}
+      onPaste={(event) => {
+        event.preventDefault();
+        const el = elRef.current;
+        if (!el || readOnly || composing.current || compositionFlush.current) return;
+        const text = plainTransfer(event.clipboardData);
+        const selection = getSelectionOffsets(el);
+        if (text != null && selection) applyReplacement(text, selection);
+      }}
+      onDragOver={(event) => {
+        event.preventDefault();
+        event.dataTransfer.dropEffect = readOnly ? 'none' : 'copy';
+      }}
+      onDrop={(event) => {
+        event.preventDefault();
+        const el = elRef.current;
+        if (!el || readOnly || composing.current || compositionFlush.current) return;
+        const text = plainTransfer(event.dataTransfer);
+        const selection = dropSelection(el, event.clientX, event.clientY);
+        if (text != null && selection) applyReplacement(text, selection);
+      }}
+      onClick={(event) => {
+        const target = event.target instanceof Element ? event.target.closest<HTMLElement>('.anchor-hl') : null;
+        if (target?.dataset.anchorId) onAnchorClick?.(target.dataset.anchorId);
+      }}
     />
   );
 });
