@@ -256,7 +256,16 @@ function assertEnvelope(value: unknown): asserts value is TimeCapsuleEnvelope {
     throw new ShareCodecError('Invalid time-capsule envelope');
   }
   const o = value as Record<string, unknown>;
-  if (o.v !== 1 || typeof o.age !== 'string' || !isFiniteTimestamp(o.round) || !Number.isSafeInteger(o.round) || o.round <= 0 || !isFiniteTimestamp(o.unlockMs) || !Number.isFinite(new Date(o.unlockMs).getTime()) || o.unlockMs !== unixMsAtRound(o.round)) {
+  if (o.v !== 1 || typeof o.age !== 'string' || !isFiniteTimestamp(o.round) || !Number.isSafeInteger(o.round) || o.round <= 0 || !isFiniteTimestamp(o.unlockMs) || !Number.isFinite(new Date(o.unlockMs).getTime())) {
+    throw new ShareCodecError('Invalid time-capsule envelope');
+  }
+  let scheduledMs: number;
+  try {
+    scheduledMs = unixMsAtRound(o.round);
+  } catch {
+    throw new ShareCodecError('Invalid time-capsule envelope');
+  }
+  if (o.unlockMs !== scheduledMs) {
     throw new ShareCodecError('Invalid time-capsule envelope');
   }
   checkLayerSize(o.age.length);
