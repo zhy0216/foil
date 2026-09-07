@@ -247,6 +247,7 @@ export function wrapRangeInEditor(
   const dom = readDOM(root);
   for (const [node, offsets] of dom.boundaries) {
     if (!(node instanceof Text)) continue;
+    if (!(node.textContent ?? '').replace(/\u200b/g, '')) continue;
     // Repeating the same highlight does not grow nested wrappers.
     let parent = node.parentElement;
     let alreadyWrapped = false;

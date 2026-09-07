@@ -194,6 +194,7 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(prop
     const selection = commandSelection(explicit);
     if (!selection) return false;
     el.focus();
+    setSelectionOffsets(el, selection);
     commit(replaceMarkdownSelection(getMarkdown(el), selection, text), selection);
     return true;
   }, [readOnly, commandSelection, commit]);
@@ -207,6 +208,7 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(prop
     const text = md.slice(Math.min(selection.anchor, selection.focus), Math.max(selection.anchor, selection.focus));
     const inserted = wrap === null ? `[${text}](url)` : wrap + text + wrap;
     el.focus();
+    setSelectionOffsets(el, selection);
     commit(replaceMarkdownSelection(md, selection, inserted, wrap === null ? text.length + 3 : undefined), selection);
     return true;
   }, [readOnly, commandSelection, commit]);
@@ -281,13 +283,13 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(prop
   }, [readOnly, restoreHistory, insertNewline, formatSelection, applyReplacement]);
 
   const onKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (composing.current || compositionFlush.current || event.nativeEvent.isComposing || event.keyCode === 229) return;
     const command = (event.metaKey || event.ctrlKey) && !event.altKey;
     const key = event.key.toLowerCase();
     if (readOnly) {
       if (event.key === 'Enter' || (command && ['b', 'i', 'k', 'z', 'y'].includes(key))) event.preventDefault();
       return;
     }
+    if (composing.current || compositionFlush.current || event.nativeEvent.isComposing || event.keyCode === 229) return;
     if (event.key === 'Enter' && !command && !event.altKey) {
       event.preventDefault();
       insertNewline(event.shiftKey);

@@ -16,7 +16,7 @@ default_agent: codex
 | --- | --- | --- | --- | --- | --- |
 | [01-share-boundaries.md](done/01-share-boundaries.md) | P1 | hard | codex，继承默认 | gpt-6-astra / max | ✅ 已完成：分享数据、大小与协议边界 |
 | [02-markdown-fidelity.md](done/02-markdown-fidelity.md) | P1 | medium | codex，继承默认 | gpt-6-astra / xhigh | 已完成：原始 Markdown 字符保真 |
-| [03-editor-input.md](03-editor-input.md) | P1 | hard | codex，继承默认 | gpt-6-astra / max | 输入、选区、评论高亮生命周期 |
+| [done/03-editor-input.md](done/03-editor-input.md) | P1 | hard | codex，继承默认 | gpt-6-astra / max | ✅ 已完成：输入、选区、评论高亮生命周期 |
 | [04-local-persistence.md](04-local-persistence.md) | P1 | hard | codex，继承默认 | gpt-6-astra / max | 🚧 实现中：保存与 storage 失败恢复 |
 | [05-import-lifecycle.md](05-import-lifecycle.md) | P1 | hard | codex，继承默认 | gpt-6-astra / max | 初始化、解锁取消、只读与文档切换 |
 | [06-comment-layout.md](06-comment-layout.md) | P1 | hard | codex，继承默认 | gpt-6-astra / max | 评论定位与实际尺寸布局 |
@@ -31,7 +31,7 @@ default_agent: codex
 
 1. `done/01-share-boundaries.md` — ✅ 已完成；依赖：无。
 2. [done/02-markdown-fidelity.md](done/02-markdown-fidelity.md) — 已完成；依赖：无。
-3. `03-editor-input.md` — 依赖 `02-markdown-fidelity.md`。
+3. [done/03-editor-input.md](done/03-editor-input.md) — 已完成；依赖 `02-markdown-fidelity.md`。
 4. `04-local-persistence.md` — 依赖 `01-share-boundaries.md`。
 5. `05-import-lifecycle.md` — 依赖 `03-editor-input.md`、`04-local-persistence.md`。
 6. `06-comment-layout.md` — 依赖 `05-import-lifecycle.md`。

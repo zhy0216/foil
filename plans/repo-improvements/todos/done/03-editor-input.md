@@ -27,3 +27,16 @@ agent: inherit
 - 前置依赖：本文件 T1、T2。
 
 验证：`bun run typecheck`、`bun run test`、`bun run build`。使用已有 React/Vitest 写组件回归；不要改 package/lock，也不要把 R01 的编辑器整体迁移作为实现前提。
+
+## 完成与验收证据
+
+- T1：`editor-dom.ts` 统一生成 Markdown 与 DOM 边界映射，支持 text、元素子节点、root、`.ln`、原生 div/br、空行、嵌套语法/高亮 span、emoji UTF-16、正向/反向和跨边界选区；读取端点不改动全局 Selection。CRLF 与单独 CR 归一为 LF，ZWSP 只作为占位符并从正文/offset 中移除。DOM helper 回归覆盖每个合法 UTF-16 offset 的 round-trip、原生 HTML 形态、分裂 CRLF 和高亮重叠。
+- T2：Editor 统一使用 Markdown 选区替换事务，覆盖普通 Enter、Shift+Enter、列表/有序列表/quote/task 继续和退出、跨行/反向选区、⌘/Ctrl-B/I/K；paste/drop 始终阻止默认行为，仅接受 `text/plain`，文件和 HTML-only payload 不插入。composition 期间不重建或劫持 Enter，结束后延迟一次同步；readOnly 拦截键盘、beforeinput、paste/drop 和 imperative 编辑。handle 新增 `getSelection`、`replaceSelection`、`wrapSelection`、`insertLink`，原有方法保持兼容；DOM 重建事务保留有界 undo/redo 快照。
+- T3：输入、prop 替换及 handle `setMarkdown` 都走统一 paint 生命周期；高亮在重建后重新定位，先保存再恢复正反向选区，重复刷新先清理旧 span，避免嵌套增长和 selectionchange effect 循环。评论点击继续报告 thread ID；正文、空行、跨行与重叠高亮回读不变。
+- 针对性回归：`src/lib/editor-dom.test.ts` 59 项、`src/components/Editor.test.tsx` 8 项通过；覆盖恶意 HTML 纯文本粘贴/拖放、输入法提交一次、只读门禁、高亮生命周期及 toolbar handle。
+- `bun install --frozen-lockfile`：通过，package/lock 未修改。
+- `bun run typecheck`：通过。
+- `bun run test`：4 个文件、143 项通过；测试未访问真实 drand。
+- `bun run build`：通过，Vite 5.4.21，194 modules。
+- `git diff --check`：通过。
+- 剩余限制：本任务使用 JSDOM 组件/DOM 回归；真实 Chromium/WebKit、平台剪贴板差异和 IME 人工验证属于 12。当前分支仍会显示基线 Vite React 插件的 esbuild/oxc 弃用警告，按队列由 09 处理；未改 package/lock。
