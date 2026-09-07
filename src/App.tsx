@@ -99,15 +99,21 @@ function loadInitialPreferences(): InitialPreferences {
   const errors: StorageFailure[] = [];
   const settingsRaw = readStorageItem('local', 'foil_settings');
   let settings = { ...DEFAULT_SETTINGS };
+  let structuredParsed = false;
   if (!settingsRaw.ok) {
     errors.push(settingsRaw.error);
   } else if (settingsRaw.value) {
     try {
-      settings = parseSettings(JSON.parse(settingsRaw.value));
+      const parsed: unknown = JSON.parse(settingsRaw.value);
+      if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        settings = parseSettings(parsed);
+        structuredParsed = true;
+      }
     } catch {
       settings = { ...DEFAULT_SETTINGS };
     }
-  } else {
+  }
+  if (settingsRaw.ok && !structuredParsed) {
     const legacy = readStorageItem('local', 'foil_theme');
     if (!legacy.ok) errors.push(legacy.error);
     else if (legacy.value != null && isTheme(legacy.value)) settings = { ...settings, theme: legacy.value };
@@ -304,6 +310,25 @@ export default function App() {
       const now = Date.now();
       const createdAt =
         snapshot.createdAt ?? createdAtByIdRef.current[snapshot.id] ?? now;
+      const existing = readDoc(snapshot.id);
+      if (!existing.ok) {
+        setSaveState('error');
+        reportStorageError(existing.error);
+        return false;
+      }
+      if (
+        existing.value &&
+        existing.value.title === snapshot.title &&
+        existing.value.md === snapshot.md &&
+        JSON.stringify(existing.value.comments) === JSON.stringify(snapshot.comments)
+      ) {
+        if (snapshot.id === latestDocRef.current.id && revision === dirtyRevisionRef.current) {
+          dirtyRef.current = false;
+          setSaveState('saved');
+        }
+        setStorageError(null);
+        return true;
+      }
       const result = saveDoc({
         id: snapshot.id,
         title: snapshot.title,
@@ -702,7 +727,8 @@ export default function App() {
           if (docResult.ok && docResult.value) {
             adoptDoc(docResult.value, true);
           } else {
-            clearCurrentId();
+            const cleared = clearCurrentId();
+            if (!cleared.ok) reportStorageError(cleared.error);
             const fresh = createDocResult({ md: SAMPLE_MD });
             if (!fresh.ok) reportStorageError(fresh.error);
             adoptDoc(fresh.value, fresh.ok);
@@ -732,7 +758,8 @@ export default function App() {
           if (docResult.ok && docResult.value) {
             adoptDoc(docResult.value, true);
           } else {
-            clearCurrentId();
+            const cleared = clearCurrentId();
+            if (!cleared.ok) reportStorageError(cleared.error);
             const fresh = createDocResult({ md: SAMPLE_MD });
             if (!fresh.ok) reportStorageError(fresh.error);
             adoptDoc(fresh.value, fresh.ok);

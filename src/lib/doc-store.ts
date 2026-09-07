@@ -249,7 +249,7 @@ export function createDocResult(
   initial?: Partial<Pick<StoredDoc, 'title' | 'md' | 'comments'>>
 ): CreateDocResult {
   const now = Date.now();
-  const doc: StoredDoc = {
+  let doc: StoredDoc = {
     id: genId(),
     title: initial?.title ?? 'Untitled document',
     md: initial?.md ?? '',
@@ -257,6 +257,20 @@ export function createDocResult(
     createdAt: now,
     updatedAt: now,
   };
+  // A random ID collision must never turn creation into an overwrite. Keep a
+  // corrupt existing record untouched as well; saveDoc performs the final
+  // check immediately before writing.
+  let available = false;
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const existing = readDoc(doc.id);
+    if (!existing.ok) return { ok: false, error: existing.error, value: doc };
+    if (!existing.value) {
+      available = true;
+      break;
+    }
+    doc = { ...doc, id: genId() };
+  }
+  if (!available) return { ok: false, error: failure('unavailable', 'create'), value: doc };
   const result = saveDoc(doc);
   return result.ok ? { ok: true, value: doc } : { ok: false, error: result.error, value: doc };
 }
