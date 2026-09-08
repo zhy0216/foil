@@ -45,7 +45,9 @@ import {
   parseSettings,
   isTheme,
 } from './lib/settings-config';
-import { decodeUrl, type TimeCapsuleEnvelope } from './lib/url-codec';
+import { decodeUrl, encodeHtmlPayload, type ShareOptions, type TimeCapsuleEnvelope } from './lib/url-codec';
+import { assembleHtmlShare } from './lib/html-export';
+import { loadStandaloneRuntime } from './lib/standalone-runtime-loader';
 import type {
   CommentThread,
   ComposerState,
@@ -53,6 +55,12 @@ import type {
   SelectionInfo,
   Settings,
 } from './types';
+
+async function exportWebsiteHtml(state: DocState, options: ShareOptions, shareBaseUrl?: string) {
+  const runtime = await loadStandaloneRuntime();
+  const payload = await encodeHtmlPayload(state, options);
+  return assembleHtmlShare({ payload, runtime, title: state.title, shareBaseUrl });
+}
 
 const SAMPLE_MD = `# Welcome to Foil
 
@@ -744,6 +752,8 @@ export default function App() {
         getState={getState}
         onToast={showToast}
         onLearnMore={() => setHelpOpen(true)}
+        shareBaseUrl={window.location.origin + window.location.pathname}
+        exportHtml={exportWebsiteHtml}
       />
 
       <HelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />

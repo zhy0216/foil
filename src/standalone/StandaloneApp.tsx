@@ -3,24 +3,20 @@ import { HelpModal } from '../components/HelpModal';
 import { PasswordPromptModal } from '../components/PasswordPromptModal';
 import { ReadOnlyDocument } from '../components/ReadOnlyDocument';
 import { SettingsModal } from '../components/SettingsModal';
+import { ShareModal } from '../components/ShareModal';
 import { TimeCapsuleUnlock } from '../components/TimeCapsuleUnlock';
 import { HtmlShareFormatError } from '../lib/html-share-format';
 import { DEFAULT_SETTINGS, parseSettings } from '../lib/settings-config';
-import type { StandaloneRuntime } from '../lib/standalone-runtime';
-import { decodeHtmlPayload, type TimeCapsuleEnvelope } from '../lib/url-codec';
+import { assembleHtmlShare } from '../lib/html-export';
+import { decodeHtmlPayload, encodeHtmlPayload, type ShareOptions, type TimeCapsuleEnvelope } from '../lib/url-codec';
 import type { DocState, Settings } from '../types';
 import { readEmbeddedShareData, readStandaloneRuntime } from './resources';
 
-export interface StandaloneShareContext {
-  doc: DocState;
-  /** Missing in older/hand-made files; never substitute a file:// URL. */
-  shareBaseUrl?: string;
-  loadRuntime: () => Promise<StandaloneRuntime>;
-}
-
-export interface StandaloneAppProps {
-  /** 04 supplies the Share UI; this callback is reachable only after unlocking. */
-  onShare?: (context: StandaloneShareContext) => void;
+async function exportFileHtml(state: DocState, options: ShareOptions, shareBaseUrl?: string) {
+  // Reuse only the fixed script/style blocks, never the unlocked preview DOM.
+  const runtime = readStandaloneRuntime();
+  const payload = await encodeHtmlPayload(state, options);
+  return assembleHtmlShare({ payload, runtime, title: state.title, shareBaseUrl });
 }
 
 type Phase =
@@ -53,7 +49,7 @@ function initialSettings(): Settings {
   catch { return { ...DEFAULT_SETTINGS }; }
 }
 
-export function StandaloneApp({ onShare }: StandaloneAppProps) {
+export function StandaloneApp() {
   // Capture the file once. Retry, StrictMode and location.hash never select a
   // different document, and no document-store fallback exists in this entry.
   const [source] = useState(() => {
@@ -67,6 +63,19 @@ export function StandaloneApp({ onShare }: StandaloneAppProps) {
   const [settings, setSettings] = useState(initialSettings);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const showToast = useCallback((message: string) => {
+    clearTimeout(toastTimer.current);
+    setToast(message);
+    toastTimer.current = setTimeout(() => setToast(null), 2000);
+  }, []);
+  useEffect(() => () => clearTimeout(toastTimer.current), []);
+  const getState = useCallback(() => {
+    if (phase.kind !== 'preview') throw new Error('Unlock the document before sharing.');
+    return phase.doc;
+  }, [phase]);
 
   const decode = useCallback(async (password?: string) => {
     const request = ++generation.current;
@@ -123,14 +132,15 @@ export function StandaloneApp({ onShare }: StandaloneAppProps) {
   if (phase.kind === 'preview') return <>
     <ReadOnlyDocument doc={phase.doc} settings={settings}
       onSettings={() => setSettingsOpen(true)} onHelp={() => setHelpOpen(true)}
-      onShare={onShare ? () => onShare({
-        doc: phase.doc, shareBaseUrl: source.data?.shareBaseUrl,
-        loadRuntime: async () => readStandaloneRuntime(),
-      }) : undefined}
+      onShare={() => setShareOpen(true)}
     />
     <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} settings={settings}
       onChange={changeSettings} onReset={() => changeSettings({ ...DEFAULT_SETTINGS })} />
+    <ShareModal open={shareOpen} onClose={() => setShareOpen(false)} getState={getState}
+      shareBaseUrl={source.data?.shareBaseUrl} exportHtml={exportFileHtml} onToast={showToast}
+      onLearnMore={() => setHelpOpen(true)} />
     <HelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
+    {toast && <div className="toast" role="status">{toast}</div>}
   </>;
   return <main className="modal-backdrop">
     <div className="modal" role={phase.kind === 'error' ? 'alert' : 'status'}>

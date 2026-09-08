@@ -834,6 +834,21 @@ input, textarea { font: inherit; color: inherit; }
 }
 
 /* ---------- Share modal: option rows + time-lock presets ---------- */
+.share-modal {
+  max-height: calc(100dvh - 48px);
+  overflow-y: auto;
+}
+.share-html {
+  border-top: 1px solid var(--border);
+  margin-top: 16px;
+  padding-top: 16px;
+}
+.share-feedback {
+  color: var(--fg-muted);
+  font-size: var(--text-xs);
+  margin: 8px 0 0;
+  overflow-wrap: anywhere;
+}
 .share-option {
   padding: 10px 12px;
   background: var(--bg-raised);

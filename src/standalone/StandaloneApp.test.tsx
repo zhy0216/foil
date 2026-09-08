@@ -3,14 +3,16 @@ import { webcrypto } from 'node:crypto';
 import { act, StrictMode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { StandaloneApp, type StandaloneAppProps } from './StandaloneApp';
-import { decodeHtmlPayload, openTimeCapsule, type DecodeResult, type TimeCapsuleEnvelope } from '../lib/url-codec';
+import { StandaloneApp } from './StandaloneApp';
+import { decodeHtmlPayload, encodeHtmlPayload, encodeUrl, openTimeCapsule, type DecodeResult, type TimeCapsuleEnvelope } from '../lib/url-codec';
+import { readEmbeddedShareData, readStandaloneRuntime } from './resources';
 import { NoEndpointError, NotYetReadyError } from '../lib/timecapsule';
 import { getMarkdown } from '../lib/editor-dom';
 import type { DocState } from '../types';
 
 vi.mock('../lib/url-codec', async load => ({
   ...await load<typeof import('../lib/url-codec')>(), decodeHtmlPayload: vi.fn(), openTimeCapsule: vi.fn(),
+  encodeHtmlPayload: vi.fn(), encodeUrl: vi.fn(),
 }));
 vi.mock('../App', () => { throw new Error('Standalone imported App'); });
 vi.mock('../components/Editor', () => { throw new Error('Standalone imported Editor'); });
@@ -49,6 +51,8 @@ beforeEach(() => {
   embed('d');
   decode.mockReset().mockResolvedValue({ state: doc });
   open.mockReset().mockResolvedValue(doc);
+  vi.mocked(encodeHtmlPayload).mockReset().mockResolvedValue('#d=e30');
+  vi.mocked(encodeUrl).mockReset().mockResolvedValue('#d=e30');
   root = createRoot(host);
 });
 afterEach(() => {
@@ -62,8 +66,8 @@ function embed(scheme: string) {
   block.textContent = JSON.stringify({ format: 'foil-share', version: 1,
     payload: '#' + scheme + '=' + 'A'.repeat(60), shareBaseUrl: 'https://example.test/foil/?private#fragment' });
 }
-async function mount(props: StandaloneAppProps = {}, strict = true) {
-  await act(async () => root!.render(strict ? <StrictMode><StandaloneApp {...props} /></StrictMode> : <StandaloneApp {...props} />));
+async function mount(strict = true) {
+  await act(async () => root!.render(strict ? <StrictMode><StandaloneApp /></StrictMode> : <StandaloneApp />));
 }
 function button(label: string) {
   const found = Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find(el =>
@@ -236,17 +240,57 @@ describe('standalone file lifecycle', () => {
     expect(host.querySelector('[contenteditable="true"]')).toBeNull();
   });
 
-  it('exposes sharing only after unlocking with the normalized source and its own resources', async () => {
-    const onShare = vi.fn();
+  it.each(['d', 'e', 'td', 'te'])('shares an unlocked file using its source and own resources with #%s protection', async scheme => {
     const script = document.createElement('script'); script.id = 'foil-share-runtime'; script.textContent = 'void 0;'; document.body.append(script);
     const style = document.createElement('style'); style.id = 'foil-share-styles'; style.textContent = 'body{}'; document.head.append(style);
     embed('e'); decode.mockImplementation(async (_p, pw) => pw ? { state: doc } : { encrypted: 'password' });
-    await mount({ onShare }); hidden(); expect(onShare).not.toHaveBeenCalled();
+    const blobs: Blob[] = [];
+    vi.stubGlobal('URL', Object.assign(class extends URL {}, {
+      createObjectURL: vi.fn((blob: Blob) => { blobs.push(blob); return 'blob:foil'; }), revokeObjectURL: vi.fn(),
+    }));
+    const download = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    await mount(); hidden();
+    expect(host.textContent).not.toContain('Share this document');
     await password('correct'); await click('Share');
-    expect(onShare).toHaveBeenCalledOnce();
-    const context = onShare.mock.calls[0][0];
-    expect(context.doc).toEqual(doc);
-    expect(context.shareBaseUrl).toBe('https://example.test/foil/');
-    expect(await context.loadRuntime()).toEqual({ script: 'void 0;', styles: 'body{}' });
+    await act(async () => vi.advanceTimersByTime(250));
+    expect(host.querySelector<HTMLInputElement>('.url-row input')!.value).toBe('https://example.test/foil/#d=e30');
+    if (scheme === 'e' || scheme === 'te') {
+      act(() => host.querySelectorAll<HTMLElement>('[role="switch"]')[0].click());
+      const input = host.querySelector<HTMLInputElement>('input[type="password"]')!;
+      act(() => {
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, 'new protection');
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+    }
+    if (scheme === 'td' || scheme === 'te') act(() => host.querySelectorAll<HTMLElement>('[role="switch"]')[1].click());
+    vi.mocked(encodeHtmlPayload).mockResolvedValue('#' + scheme + '=' + 'A'.repeat(60));
+    await click('Export HTML');
+    await vi.waitFor(() => expect(download).toHaveBeenCalledOnce());
+    expect(encodeHtmlPayload).toHaveBeenCalledExactlyOnceWith(doc, {
+      ...(scheme === 'e' || scheme === 'te' ? { password: 'new protection' } : {}),
+      ...(scheme === 'td' || scheme === 'te' ? { unlockMs: expect.any(Number) } : {}),
+    });
+    const html = await blobs[0].text();
+    const dom = new DOMParser().parseFromString(html, 'text/html');
+    expect(readEmbeddedShareData(dom)).toMatchObject({ shareBaseUrl: 'https://example.test/foil/', payload: '#' + scheme + '=' + 'A'.repeat(60) });
+    expect(readStandaloneRuntime(dom)).toEqual({ script: 'void 0;', styles: 'body{}' });
+    expect(dom.getElementById('root')!.textContent).not.toContain('SECRET_');
+    expect(html).not.toContain(doc.md); expect(html).not.toContain(doc.comments[0].replies[0].body);
+    await click('Done'); preview();
+    await click('Settings'); await click('Done'); await click('About Foil'); await click('Done');
+  });
+
+  it('keeps HTML available without source metadata and reports missing own resources', async () => {
+    const data = JSON.parse(block.textContent!); delete data.shareBaseUrl;
+    block.textContent = JSON.stringify(data);
+    await mount(); await click('Share');
+    await act(async () => vi.advanceTimersByTime(250));
+    expect(encodeUrl).not.toHaveBeenCalled();
+    expect(host.querySelector<HTMLButtonElement>('.url-row button')!.disabled).toBe(true);
+    expect(button('Export HTML').disabled).toBe(false);
+    await click('Export HTML');
+    expect(host.textContent).toContain("Couldn't export HTML:");
+    expect(encodeHtmlPayload).not.toHaveBeenCalled();
+    expect(button('Export HTML').disabled).toBe(false);
   });
 });

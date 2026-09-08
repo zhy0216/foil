@@ -17,7 +17,7 @@ default_agent: codex
 | [01-html-payload.md](done/01-html-payload.md) | P1 | hard | codex，继承默认 | gpt-6-astra / max | 已完成，待集成：共用四种密码学模式，有界文件 payload 和版本格式；验收/API 见完成记录 |
 | [02-readonly-preview.md](done/02-readonly-preview.md) | P1 | hard | codex，继承默认 | gpt-6-astra / max | 已完成：网站/文件共用预览，保留评论与设置，移除文件编辑依赖 |
 | [03-standalone-html.md](done/03-standalone-html.md) | P1 | hard | codex，继承默认 | gpt-6-astra / max | 已完成，待集成：独立阅读入口、单文件构建/CSP、组装/下载与自身资源 API；实际 file 验证见归档 |
-| [04-share-export.md](04-share-export.md) | P1 | medium | codex，继承默认 | gpt-6-astra / xhigh | Share 下载 HTML，保护选项/快照一致，文件可再次分享 |
+| [04-share-export.md](done/04-share-export.md) | P1 | medium | codex，继承默认 | gpt-6-astra / xhigh | 已完成，待集成：Share 下载与文件再次分享；619 项单测、12 项网站 e2e 和实际双浏览器离线下载链路通过 |
 | [05-file-regressions.md](05-file-regressions.md) | P1 | medium | codex，继承默认 | gpt-6-astra / xhigh | 真实下载/file 打开浏览器回归、四种模式与使用文档 |
 
 ## 文件
@@ -36,9 +36,9 @@ default_agent: codex
 
    依赖 01-html-payload、02-readonly-preview；以两项已合入的 `38c1b84` 为基线完成。交付独立入口、按需网站资源与文件自身资源 API、HTML 组装/下载工具；578 项单测、现有 12 项网站 e2e、默认/root 构建及真实 file 验证通过。04 的接口与验证范围见归档记录。
 
-4. `04-share-export.md`
+4. [04-share-export.md](done/04-share-export.md) — 已完成，待协调器集成
 
-   依赖 03-standalone-html（传递依赖 01、02）。Share UI、网站/文件出口注入一起提交。
+   依赖 03-standalone-html（传递依赖 01、02），基于已合入的 `65c044c` 完成。Share UI、网站/文件出口注入一起交付；619 项单测、12 项网站 e2e、Chromium/WebKit 普通/密码真实下载与离线再次导出，以及实际超 URL 上限文件导出通过。最终 API、按钮/错误定位、命名与 05 交接见归档。
 
 5. `05-file-regressions.md`
 
