@@ -2,6 +2,8 @@
 
 方案：[../plan.md](../plan.md)。目标是 Share 导出可直接发送、单文件自包含、仅 preview 的 HTML，保留普通/密码/时间胶囊/密码加时间胶囊和全部阅读功能。
 
+全部 5 项已合入本地 `main`，todo 均归档至 `done/`，本轮任务 agent、workspace、worktree 和分支均已清理。最终验证与 commit 对照见[方案执行结果](../plan.md#执行结果)。没有阻塞或延期任务；未部署、未推送。
+
 ## 执行偏好
 
 default_agent: codex
@@ -14,33 +16,33 @@ default_agent: codex
 
 | 文件 | 优先级 | 难度 | agent | 模型 / Codex 推理强度 | 说明 |
 | --- | --- | --- | --- | --- | --- |
-| [01-html-payload.md](done/01-html-payload.md) | P1 | hard | codex，继承默认 | gpt-6-astra / max | 已完成，待集成：共用四种密码学模式，有界文件 payload 和版本格式；验收/API 见完成记录 |
-| [02-readonly-preview.md](done/02-readonly-preview.md) | P1 | hard | codex，继承默认 | gpt-6-astra / max | 已完成：网站/文件共用预览，保留评论与设置，移除文件编辑依赖 |
-| [03-standalone-html.md](done/03-standalone-html.md) | P1 | hard | codex，继承默认 | gpt-6-astra / max | 已完成，待集成：独立阅读入口、单文件构建/CSP、组装/下载与自身资源 API；实际 file 验证见归档 |
-| [04-share-export.md](done/04-share-export.md) | P1 | medium | codex，继承默认 | gpt-6-astra / xhigh | 已完成，待集成：Share 下载与文件再次分享；619 项单测、12 项网站 e2e 和实际双浏览器离线下载链路通过 |
-| [05-file-regressions.md](done/05-file-regressions.md) | P1 | medium | codex，继承默认 | gpt-6-astra / xhigh | 已完成，待集成：正式四模式真实下载/file 矩阵与文档；619 单测、默认/root 各 28 项双浏览器 e2e 通过 |
+| [01-html-payload.md](done/01-html-payload.md) | P1 | hard | codex，继承默认 | gpt-6-astra / max | 已合入并清理：共用四种密码学模式，有界文件 payload 和版本格式；验收/API 见完成记录 |
+| [02-readonly-preview.md](done/02-readonly-preview.md) | P1 | hard | codex，继承默认 | gpt-6-astra / max | 已合入并清理：网站/文件共用预览，保留评论与设置，移除文件编辑依赖 |
+| [03-standalone-html.md](done/03-standalone-html.md) | P1 | hard | codex，继承默认 | gpt-6-astra / max | 已合入并清理：独立阅读入口、单文件构建/CSP、组装/下载与自身资源 API；实际 file 验证见归档 |
+| [04-share-export.md](done/04-share-export.md) | P1 | medium | codex，继承默认 | gpt-6-astra / xhigh | 已合入并清理：Share 下载与文件再次分享；619 项单测、12 项网站 e2e 和实际双浏览器离线下载链路通过 |
+| [05-file-regressions.md](done/05-file-regressions.md) | P1 | medium | codex，继承默认 | gpt-6-astra / xhigh | 已合入并清理：正式四模式真实下载/file 矩阵与文档；619 单测、默认/root 各 28 项双浏览器 e2e 通过 |
 
 ## 文件
 
 1. [done/01-html-payload.md](done/01-html-payload.md)
 
-   已完成，待协调器集成。依赖：无。可与 02 并行；只拥有 codec、文件格式及其测试。完成记录提供 03/04 所需的真实 API、限制、错误语义和验证结果。
+   已合入并清理。依赖：无。可与 02 并行；只拥有 codec、文件格式及其测试。完成记录提供 03/04 所需的真实 API、限制、错误语义和验证结果。
 
-2. [02-readonly-preview.md](done/02-readonly-preview.md) — 已完成
+2. [02-readonly-preview.md](done/02-readonly-preview.md) — 已合入并清理
 
    依赖：无。可与 01 并行；拥有阅读 UI、App 阅读分支、Thread 与阅读样式，不能改 codec。
 
    已交付 Preview / ReadOnlyDocument / useReadingSettings，实际 API 与逐项验收见归档文件。rebase 到 c5338d6 后，类型检查、531 项单测、生产构建与 Chromium/WebKit 12 项 e2e 通过；独立阶段的首次 e2e 端口冲突及重跑结果仍保留记录。
 
-3. [03-standalone-html.md](done/03-standalone-html.md) — 已完成，待协调器集成
+3. [03-standalone-html.md](done/03-standalone-html.md) — 已合入并清理
 
    依赖 01-html-payload、02-readonly-preview；以两项已合入的 `38c1b84` 为基线完成。交付独立入口、按需网站资源与文件自身资源 API、HTML 组装/下载工具；578 项单测、现有 12 项网站 e2e、默认/root 构建及真实 file 验证通过。04 的接口与验证范围见归档记录。
 
-4. [04-share-export.md](done/04-share-export.md) — 已完成，待协调器集成
+4. [04-share-export.md](done/04-share-export.md) — 已合入并清理
 
    依赖 03-standalone-html（传递依赖 01、02），基于已合入的 `65c044c` 完成。Share UI、网站/文件出口注入一起交付；619 项单测、12 项网站 e2e、Chromium/WebKit 普通/密码真实下载与离线再次导出，以及实际超 URL 上限文件导出通过。最终 API、按钮/错误定位、命名与 05 交接见归档。
 
-5. [05-file-regressions.md](done/05-file-regressions.md) — 已完成，待协调器集成
+5. [05-file-regressions.md](done/05-file-regressions.md) — 已合入并清理
 
    依赖 04-share-export（传递依赖 01、02、03），基于 `f7f1f8f` 完成。新增 16 项 Chromium/WebKit 正式 file 验收；完整默认与根路径各 28/28 通过，单测 619/619。README/Help/CLAUDE 已同步；精确复跑命令、逐条证据、体积与环境事项见本项归档。
 

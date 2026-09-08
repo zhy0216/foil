@@ -120,3 +120,45 @@ ShareModal 保留复制链接，新增 HTML 出口，共用文档快照、保护
 - Rollup 明确说明内联动态导入会改变模块执行顺序，故 Buffer 与真实 tlock 初始化列为必验项。[Rollup inlineDynamicImports](https://rollupjs.org/configuration-options/#output-inlinedynamicimports)
 - 内联脚本通过最终字节对应的 CSP hash 授权；文本的安全嵌入仍独立验证。[MDN script-src](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy/script-src)
 - “只有 preview”解释为只读正文与既有评论；对评论的写入本来就要求先进入 editor，不加入文件。作者设置不随分享传输；接收方可自行调整。
+
+## 执行结果
+
+全部 5 项已完成并快进合入本地 `main`。执行起点为干净的 `73ef58d`；仅执行本队列，按 `01 + 02` 并行、`03 → 04 → 05` 串行集成。每项使用独立 worktree，保留一个最终任务 commit；完成记录均归档至 `todos/done/`。
+
+所有任务的 `agent: inherit` 解析为保存的默认 `codex`，模型均为 `gpt-6-astra`。hard 使用 `max`，medium 使用 `xhigh`，没有继承协调器的 `high`。本机 CLI/模型元数据复核后，实际启动显式指定模型、对应推理强度及 `--dangerously-bypass-approvals-and-sandbox`。
+
+| 任务 / 完成记录 | 难度 / 推理强度 | 最终 commit | 协调器独立集成验证 |
+| --- | --- | --- | --- |
+| [01 文件 payload](todos/done/01-html-payload.md) | hard / max | `c5338d6` | typecheck、514 项单测、生产构建通过 |
+| [02 共用只读预览](todos/done/02-readonly-preview.md) | hard / max | `38c1b84` | typecheck、531 项单测、构建及 Chromium/WebKit 12 项 e2e 通过 |
+| [03 独立 HTML](todos/done/03-standalone-html.md) | hard / max | `65c044c` | typecheck、578 项单测、默认/root 构建；Chromium 四模式与 WebKit d/e/td 共 7 个实际 file 场景通过 |
+| [04 Share 出口](todos/done/04-share-export.md) | medium / xhigh | `f7f1f8f` | typecheck、619 项单测、构建及 Chromium/WebKit 12 项 e2e 通过 |
+| [05 文件回归与文档](todos/done/05-file-regressions.md) | medium / xhigh | `8c3d1eb` | typecheck、619 项单测；默认/root 构建及双浏览器矩阵各 28/28 通过 |
+
+### 实际交付
+
+Share 新增 **Export HTML**，下载可直接发送的单个 HTML。文件包含完整阅读程序、样式和文档快照，提供标题、正文、所有评论/回复、评论定位与移动抽屉、选择复制、统计、设置、帮助、继续分享；没有 editor、文档库或评论写入控件。网站与文件共用只读预览，网站保留进入本地编辑的动作。
+
+普通/密码文件可离线打开、刷新及再次导出；时间胶囊与密码加时间胶囊仍需 drand。文件沿用四种真实密码学模式，保留解压/schema 限制，URL 的 256 KiB 限制未放宽。文件采用独立有界传输预算、版本数据验证、安全嵌入与脚本 hash CSP；受保护文件不暴露文档标题或明文。取消、失败、过期和异步旧结果不会回落下载普通明文。
+
+### 最终验证与限制
+
+任务 agent 在 rebase 后、协调器在合入前分别顺序执行并通过以下完整检查，最终 HEAD 均为 `8c3d1eb`，无业务代码再修改：
+
+```sh
+bun run typecheck
+bun run test
+bun run test:e2e --workers=2
+bun run build --base /
+FOIL_E2E_BASE=/ bunx playwright test --workers=2
+```
+
+单测为 16 个文件、619/619；默认 `/foil/` 和根路径 `/` 各为 Chromium/WebKit 28/28，无失败或跳过。正式新增的 16 项浏览器用例通过 Share 真实下载后，在全新接收方 context 中 `file://` 打开，覆盖四种保护、离线刷新/再次导出、移动评论、禁用存储、密码/网络错误重试、取消后迟到解密结果、超 URL 上限、损坏数据和 CSP 拒绝篡改脚本。普通/密码场景阻止全部 HTTP(S)；时间胶囊使用固定 quicknet/beacon 与真实密码学，未访问公网 drand。测试环境为 Linux 上的 Chromium 153.0.8010.12 和 WebKit 26.6；不声称覆盖所有浏览器或邮件附件预览。
+
+最终独立脚本 386,377 bytes，CSS 30,880 bytes；网站按需资源模块 424,854 bytes。代表性导出文件约 419 KB，超 URL 上限的长文档约 862–865 KB。网站主 JS 约 238 KB（gzip 77 KB），Buffer 和时间胶囊仍分块延迟加载；文件再次导出的运行程序及体积检查未发现递归膨胀。精确测量和逐场景证据见 05 完成记录。
+
+执行中已解决的情况保留在各项归档：02 的首次 e2e 端口占用后顺序重跑通过，rebase 仅解决队列 README 的相邻记录冲突；03 修正内嵌资源校验与生产 JSX 构建问题，并将测试/构建顺序执行以避免 KDF 争用；05 修正测试中脚本文本计数和根路径 preview base 配置后，两种路径完整重跑通过。没有跳过测试或降低保护要求。依赖清单和锁文件均未变更，因此未运行本计划仅在依赖变更时要求的 audit。
+
+### 收尾
+
+所有任务均已合入、归档并清理，无阻塞、延期或保留待处理任务；恢复次数均为 0。已核实本轮 5 个任务 agent 正常退出，对应 Herdr workspace、Git worktree 和任务分支全部删除；Foil 仅保留原 `main` checkout，协调器和其他项目资源保持原状。最终仅补充本执行结果和队列状态的协调器文档提交。未执行其他历史 plans，未推送、未部署。
