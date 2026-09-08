@@ -27,7 +27,7 @@ bun run dev --filter=@foil/extension
 
 This runs a persistent, uncached production build watcher using Turbo's existing `dev` task. It emits local scripts under the same CSP as production. Wait for a completed build, click **Reload** on the extension card, then refresh or reopen Foil's tab. Reader-only source edits also trigger the shared HTML resource rebuild. Restart the watcher after changing build configuration, environment variables or generated icons. The website's dev server remains independent on port 5173; the extension watcher opens no port.
 
-The existing root `build`, `typecheck` and `test` tasks discover this workspace. Build outputs use the existing `dist/**`/TypeScript cache metadata; all outputs stay app-local. Run tests, builds, and browser checks sequentially because the shared password tests perform a real KDF.
+Root `build`, `typecheck`, `test` and `test:e2e` discover this workspace. Build outputs use `dist/**`/TypeScript cache metadata; all outputs stay app-local. Build/typecheck cache inputs include the narrowly imported website test helpers. Run units, builds, and browsers sequentially because the shared password tests perform a real KDF. `bun run --cwd apps/extension package:dist` checks and packages an already-built dist; Turbo declares its build dependency and ZIP output, and extension e2e also depends explicitly on the website build. CI packages once through this graph, loads the extracted ZIP during tests, and uploads it for review. Pages still uploads only `apps/web/dist`.
 
 ## Website sharing and storage
 
@@ -73,4 +73,18 @@ bun run --cwd apps/extension icons
 
 ## Browser verification
 
-Installed-package checks must use [Playwright's extension setup](https://playwright.dev/docs/chrome-extensions): bundled Chromium, `channel: 'chromium'`, `launchPersistentContext`, a fresh profile, extension-loading arguments, and service workers enabled. Keep normal CSP enforcement. An HTTP preview or a mocked `chrome` object does not establish installed-extension behavior. Native toolbar clicks and branded Chrome/Edge installations require separate manual checks; record those results independently of automated Chromium coverage. [Task 02's archived handoff](../../plans/browser-extension/todos/done/02-extension-package.md) records its passing Chromium 153.0.8010.12 smoke commands and limitations; task 04 owns the integrated browser suite and CI.
+From the repository root, after frozen install, typecheck and units:
+
+```bash
+bun run build
+bun run test:e2e:install --with-deps
+bun run test:e2e
+```
+
+To run only this suite, `bunx --no-install turbo run test:e2e --filter=@foil/extension` builds both required hosts and creates the checked ZIP before browsers. After matching builds/packaging, `bun run --cwd apps/extension test:e2e --workers=2` uses those existing outputs. `FOIL_EXTENSION_E2E_PORT` selects its strict website preview port (4273 by default), independently of the website suite's `FOIL_E2E_PORT` (4173). `FOIL_E2E_BASE` describes the already-built website path. A root `/` build must run sequentially and be restored to the default `/foil/` before Pages upload. The public destination is fulfilled from this isolated local preview; tests never visit the public website or live drand.
+
+`tests/e2e/fixtures.ts` follows [Playwright's extension setup](https://playwright.dev/docs/chrome-extensions): bundled Chromium, `channel: 'chromium'`, `launchPersistentContext`, isolated temporary profiles, real extension-loading arguments, and service workers enabled. Manifest CSP stays active. Tests cover worker/local resources, offline first use, library/settings/profile lifecycle, unsaved errors, actual clipboard copy/fallback, all four outgoing/imported protection modes and explicit forks. Downloaded HTML is saved and opened/refreshed/re-exported through actual `file://` navigation in fresh Chromium and WebKit recipients using the existing website assertions. Drand's fixed quicknet information and round 992 beacon exercise real crypto/signature verification. Unexpected HTTP(S), page errors and CSP violations fail the suite.
+
+Profiles and contexts are cleaned after each test. Reports and successful deterministic downloads stay in ignored `playwright-report/` and `test-results/`; failed custom contexts additionally retain screenshots and traces, including before a profile restart. CI collects both apps' diagnostics and `artifacts/foil-extension-0.1.0.zip`. The ZIP has no source, tests, profiles or website dist, and is a local deliverable, not a published store listing.
+
+Automated installed coverage is bundled Chromium; Chromium/WebKit also exercise downloaded files and website recipients. The toolbar test invokes the unmodified compiled handler through DevTools and real Chrome APIs, alongside the listener unit test. **Native toolbar clicks and manual unpacked installations in branded Chrome/Edge have not been performed.** See [task 04's acceptance record](../../plans/browser-extension/todos/done/04-extension-regressions.md) for exact counts, timings, browser versions and diagnosed failures. Automated results do not establish a manual Edge installation.

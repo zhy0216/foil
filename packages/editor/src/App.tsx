@@ -157,6 +157,7 @@ export default function App({ shareBaseUrl, headerActions }: AppProps) {
   const [pwPrompt, setPwPrompt] = useState<{ hash: string; error: string | null } | null>(
     null
   );
+  const passwordOperation = useRef(0);
   const [tcEnvelope, setTcEnvelope] = useState<TimeCapsuleEnvelope | null>(null);
   const [composer, setComposer] = useState<ComposerState | null>(null);
   const [selection, setSelection] = useState<SelectionInfo | null>(null);
@@ -191,6 +192,7 @@ export default function App({ shareBaseUrl, headerActions }: AppProps) {
 
   useEffect(() => () => {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    passwordOperation.current += 1;
   }, []);
 
   const reportStorageError = useCallback(
@@ -428,7 +430,11 @@ export default function App({ shareBaseUrl, headerActions }: AppProps) {
 
   const onUnlock = async (pw: string) => {
     if (!pwPrompt) return;
+    const operation = ++passwordOperation.current;
     const res = await decodeUrl(pwPrompt.hash, pw);
+    // AES/decompression cannot be interrupted. Cancel, unmount or a newer
+    // attempt invalidates this result before it can replace the current view.
+    if (operation !== passwordOperation.current) return;
     if (res.timeCapsule) {
       // #te=: outer password layer peeled, what's left is a plain time capsule.
       setTcEnvelope(res.timeCapsule);
@@ -693,6 +699,7 @@ export default function App({ shareBaseUrl, headerActions }: AppProps) {
         error={pwPrompt.error}
         onSubmit={onUnlock}
         onCancel={() => {
+          passwordOperation.current += 1;
           setPwPrompt(null);
           const idResult = readCurrentId();
           if (!idResult.ok) reportStorageError(idResult.error);

@@ -30,6 +30,27 @@
       "cache": false,
       "env": ["FOIL_E2E_BASE", "FOIL_E2E_PORT"],
       "passThroughEnv": ["PLAYWRIGHT_*"]
+    },
+    "@foil/extension#build": {
+      "dependsOn": ["^build"],
+      "env": ["VITE_*"],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/apps/web/tests/e2e/helpers/**"],
+      "outputs": ["dist/**", "*.tsbuildinfo"]
+    },
+    "@foil/extension#typecheck": {
+      "dependsOn": ["^typecheck"],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/apps/web/tests/e2e/helpers/**"],
+      "outputs": []
+    },
+    "@foil/extension#package:dist": {
+      "dependsOn": ["build"],
+      "outputs": ["artifacts/foil-extension-*.zip"]
+    },
+    "@foil/extension#test:e2e": {
+      "dependsOn": ["build", "@foil/web#build", "package:dist"],
+      "cache": false,
+      "env": ["FOIL_E2E_BASE", "FOIL_EXTENSION_E2E_PORT", "VITE_*"],
+      "passThroughEnv": ["PLAYWRIGHT_*"]
     }
   }
 }

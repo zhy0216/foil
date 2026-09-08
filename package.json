@@ -19,7 +19,7 @@
     "preview": "turbo run preview",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
-    "test:e2e": "turbo run test:e2e",
+    "test:e2e": "turbo run test:e2e --continue=dependencies-successful",
     "test:e2e:install": "bun run --cwd apps/web test:e2e:install"
   },
   "devDependencies": {

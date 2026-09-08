@@ -4,17 +4,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Commands
 
-Run workspace commands from the repository root. Bun manages `apps/*` and `packages/*`; Turbo schedules and caches tasks. The website is `@foil/web` in `apps/web`, `@foil/editor` in `packages/editor` owns the shared application and unit tests, and `@foil/typescript-config` provides shared base/React settings. Keep dependencies in the package that uses them and use `workspace:*` for internal dependencies. The root owns the pinned toolchain, Turbo and the single `bun.lock`.
+Run workspace commands from the repository root. Bun manages `apps/*` and `packages/*`; Turbo schedules and caches tasks. `@foil/web` is the website, `@foil/extension` is the Chrome/Edge MV3 host, `@foil/editor` owns the shared application/unit tests, and `@foil/typescript-config` provides shared TypeScript settings. Keep dependencies in the package that uses them and use `workspace:*` for internal dependencies. The root owns Node 22.22.3, Bun 1.4.2, Turbo and the single `bun.lock`.
 
 ```bash
 bun install --frozen-lockfile
-bun run dev        # workspace dev servers (Foil: port 5173)
-bun run build      # tsc -b, then vite build → apps/web/dist/
+bun run dev        # website on 5173; extension production build watcher, no port
+bun run build      # tsc -b, vite build → each app's own dist/
 bun run preview    # serve the built bundle
 bun run test       # vitest run (jsdom)
 bun run typecheck  # tsc --noEmit
 bun run test:e2e:install # install Chromium/WebKit; Linux CI adds --with-deps
-bun run test:e2e   # production build, then Chromium/WebKit website + real file tests
+bun run test:e2e   # both builds/extension ZIP, then installed/website/file suites
+bun run --cwd apps/extension package # production build/check → artifacts/foil-extension-0.1.0.zip
 ```
 
 Use `--filter=@foil/web` to select the website. For package-specific arguments, invoke the installed Turbo CLI directly: Bun's script runner consumes the first `--` separator. Run a single test file, by name, or limit browser workers:
@@ -25,7 +26,7 @@ bunx --no-install turbo run test --filter=@foil/editor -- -t "round-trips"
 bunx --no-install turbo run test:e2e -- --workers=2
 ```
 
-Unit/component tests live next to their subjects in `packages/editor/src/`. Browser tests live in `apps/web/tests/e2e/`. Run typecheck, the full unit suite, then build/e2e sequentially: concurrent builds can starve the real 600k-round KDF tests of their five-second budget. After the default e2e suite completes, validate the root variant with `bunx --no-install turbo run build --filter=@foil/web -- --base /` followed by `FOIL_E2E_BASE=/ bun run --cwd apps/web test:e2e --workers=2`. The package-level browser command uses the existing build; the root Turbo command depends on the default build. Never build both variants into `apps/web/dist/` concurrently. Finish with `bun run build` to restore the default `/foil/` artifact. `FOIL_E2E_PORT` selects an alternate preview port (default 4173). Browser tests are uncached; build, typecheck and unit tests use Turbo's local cache.
+Unit/component tests live beside shared and extension source/build helpers. Browser suites live in both apps' `tests/e2e/`. Run frozen install, typecheck, full units, build and browsers sequentially: concurrent builds can starve the real 600k-round KDF tests of their five-second budget. After the default e2e suite, run `bunx --no-install turbo run build --filter=@foil/web -- --base /` then `FOIL_E2E_BASE=/ bun run --cwd apps/web test:e2e --workers=2`. Package-level browser commands use existing builds/ZIPs; root Turbo ensures defaults. Never build two variants into `apps/web/dist/` concurrently. Finish with `bun run build` to restore `/foil/`. Website tests use `FOIL_E2E_PORT` (4173); extension recipients use `FOIL_EXTENSION_E2E_PORT` (4273), with separate strict previews. Both suites use two workers locally, one per app in CI. Browser tests are uncached; build/typecheck/units and checked ZIP packaging use Turbo's cache. Extension e2e declares dependencies on both app builds and `package:dist`, with explicit environment forwarding; do not add a runtime dependency on web.
 
 ## What this is
 
@@ -38,6 +39,12 @@ The default build targets GitHub Pages under a subpath, so `apps/web/vite.config
 The application source lives in `packages/editor/src/`. Paths beginning with `src/` or `build/` below are relative to `packages/editor/`; `tests/` paths are relative to `apps/web/`. The website keeps only its mount entry under `apps/web/src/`.
 
 ### Host boundary
+
+The extension mounts shared `App` with a validated public `VITE_FOIL_SHARE_BASE_URL` (default `https://foil-47v.pages.dev/`) and its **Open shared link** action. That action parses a bounded HTTP(S) URL or supported fragment locally and calls the real `chrome.tabs.create` with only a fixed packaged entry plus fragment. The toolbar worker only opens new packaged editor tabs. Keep manifest `script-src 'self'`, local assets/lazy crypto/reader resources and only the four exact drand host grants. Do not add content scripts, broad permissions, clipboard-read, HMR or sandbox/CSP bypasses. Production output is `apps/extension/dist`; Developer mode → Load unpacked in Chrome/Edge, pin/click, and after watch builds reload the extension card and editor tab. See [the extension guide](apps/extension/README.md).
+
+Extension tests use real persistent Chromium contexts (`channel: 'chromium'`, service workers allowed), worker-derived IDs and isolated profiles that are always removed. Website and `file://` recipients use fresh independent Chromium/WebKit contexts. All HTTP(S) is intercepted; only local built website assets and fixed drand info/round fixtures are fulfilled. Narrow test-only imports from website helpers are deliberate; extension build/typecheck inputs explicitly include those helpers alongside the default package inputs. Custom contexts retain diagnostics/traces/screenshots in app-local ignored output. Native toolbar clicking and branded Chrome/Edge manual installation remain separate from the automated handler smoke. ZIPs are local review artifacts, not published store packages; Pages uploads only `apps/web/dist`.
+
+Extension Web Storage is independent of HTTP website storage, with no sync or automatic migration. Clearing data/uninstalling may lose documents; export backups. Ordinary/password editing/sharing/files work offline. Time capsules require verified drand access. Preserve visible failed-write behavior and per-tab document bindings.
 
 `@foil/editor` exports `App` and `AppProps`. Optional `shareBaseUrl` supplies a public HTTP(S) website base for both links and HTML; omission retains current origin/path behavior. `ShareModal` normalizes it and strips search/hash; hosts validating their public share setting can use `normalizeShareBaseUrl` from `@foil/editor/share`. Optional `headerActions: ReactNode` renders beside Settings/Share in both editing and read-only headers. Standalone readers do not receive that slot. Keep host-specific browser APIs outside the shared package.
 

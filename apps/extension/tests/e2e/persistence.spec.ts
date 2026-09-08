@@ -1,0 +1,133 @@
+import { test, expect } from './fixtures';
+import { binding, current, documents, newDocument, selectDocument, snapshot } from './helpers';
+
+test('offline editing, formatting, comments, library lifecycle and preferences survive a profile restart', async ({ extension, baseURL }) => {
+  const page = await extension.page();
+  await newDocument(page, 'Kept document', 'Offline text 中文');
+  const editor = page.locator('[contenteditable="true"]');
+  await editor.press('ControlOrMeta+A');
+  await editor.press('ControlOrMeta+B');
+  await expect.poll(() => snapshot(page)).toBe('**Offline text 中文**');
+  await editor.press('ControlOrMeta+A');
+  await page.getByTitle('Comment', { exact: true }).click();
+  await page.getByPlaceholder('Your name').fill('Local author');
+  await page.getByPlaceholder('Leave a comment…').fill('Persist this comment');
+  await page.locator('.composer').getByRole('button', { name: /Comment/ }).click();
+  await expect.poll(async () => (await current(page)).comments.length).toBe(1);
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('radio', { name: 'Dark', exact: true }).click();
+  await page.getByRole('radio', { name: 'Large', exact: true }).click();
+  await page.getByRole('button', { name: 'Close', exact: true }).click();
+  const kept = await current(page);
+  await newDocument(page, 'Delete this document', 'Disposable');
+  const removedId = await binding(page);
+  await page.getByTitle('Switch document', { exact: true }).click();
+  const row = page.locator('.doc-switcher-row').filter({ has: page.getByText('Delete this document', { exact: true }) });
+  await row.getByRole('button', { name: 'Delete document', exact: true }).click();
+  await row.getByRole('button', { name: 'Cancel', exact: true }).click();
+  expect((await documents(page))[`foil_doc_${removedId}`]).toBeDefined();
+  await row.getByRole('button', { name: 'Delete document', exact: true }).click();
+  await row.getByRole('button', { name: 'Delete', exact: true }).click();
+  await expect(row).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await selectDocument(page, kept.title);
+  expect((await documents(page))[`foil_doc_${removedId}`]).toBeUndefined();
+  await page.reload();
+  await expect.poll(() => snapshot(page)).toBe(kept.md);
+  await expect(page.locator('.gutter-comments')).toContainText('Persist this comment');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await expect(page.locator('.editor-wrap')).toHaveCSS('--prose-size', '21px');
+
+  // Same browser profile, different origin: no automatic website migration.
+  await extension.context.setOffline(false);
+  const website = await extension.context.newPage();
+  await website.goto(baseURL!);
+  await expect(website.locator('[contenteditable="true"]')).toBeVisible();
+  expect(JSON.stringify(await documents(website))).not.toContain('Persist this comment');
+  await newDocument(website, 'Website only', 'Independent website storage');
+  await website.getByRole('button', { name: 'Settings', exact: true }).click();
+  await website.getByRole('radio', { name: 'Light', exact: true }).click();
+  await website.getByRole('button', { name: 'Close', exact: true }).click();
+  expect(JSON.stringify(await documents(page))).not.toContain('Independent website storage');
+  await page.reload();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  expect(await current(page)).toEqual(kept);
+  const websiteDocs = await documents(website);
+  await website.close();
+
+  const restarted = await extension.restart();
+  const reopened = await restarted.page();
+  await selectDocument(reopened, kept.title);
+  expect(await current(reopened)).toEqual(kept);
+  await expect(reopened.locator('.gutter-comments')).toContainText('Persist this comment');
+  await expect(reopened.locator('html')).toHaveAttribute('data-theme', 'dark');
+  expect(await reopened.evaluate(() => localStorage.getItem('foil_name'))).toBe('Local author');
+  expect((await documents(reopened))[`foil_doc_${removedId}`]).toBeUndefined();
+  await restarted.context.setOffline(false);
+  const websiteAgain = await restarted.context.newPage();
+  await websiteAgain.goto(baseURL!);
+  await expect(websiteAgain.locator('[contenteditable="true"]')).toBeVisible();
+  const restored = await documents(websiteAgain);
+  for (const [key, doc] of Object.entries(websiteDocs)) expect(restored[key]).toEqual(doc);
+  await expect(websiteAgain.locator('html')).toHaveAttribute('data-theme', 'light');
+});
+
+test('different tab bindings and pending writes survive real reload and close/reopen', async ({ extension }) => {
+  const first = await extension.page();
+  const second = await extension.page();
+  await newDocument(first, 'First tab', 'First saved');
+  await newDocument(second, 'Second tab', 'Second saved');
+  const firstId = await binding(first);
+  const secondId = await binding(second);
+  expect(firstId).not.toBe(secondId);
+  await first.locator('[contenteditable="true"]').fill('Pending reload');
+  expect((await current(first)).md).toBe('First saved');
+  await first.reload(); // pagehide must flush before the 400 ms debounce.
+  await expect.poll(() => snapshot(first)).toBe('Pending reload');
+  expect(await binding(first)).toBe(firstId);
+  await second.locator('[contenteditable="true"]').fill('Pending close');
+  expect((await current(second)).md).toBe('Second saved');
+  await second.close();
+  expect((await documents(first))[`foil_doc_${secondId}`].md).toBe('Pending close');
+  const reopened = await extension.page();
+  await selectDocument(reopened, 'Second tab');
+  await expect.poll(() => snapshot(reopened)).toBe('Pending close');
+  expect(await binding(reopened)).toBe(secondId);
+  await first.reload();
+  await reopened.reload();
+  expect(await binding(first)).toBe(firstId);
+  expect(await binding(reopened)).toBe(secondId);
+  await expect.poll(() => snapshot(first)).toBe('Pending reload');
+});
+
+test('failed writes remain visibly unsaved and block document switching until recovery', async ({ extension }) => {
+  const page = await extension.page();
+  await newDocument(page, 'Saved target', 'Target retained');
+  await newDocument(page, 'Unsaved source', 'Stored original');
+  const before = await documents(page);
+  const sourceId = await binding(page);
+  await page.evaluate(() => {
+    const original = Storage.prototype.setItem;
+    (window as unknown as { restoreWrites: () => void }).restoreWrites = () => { Storage.prototype.setItem = original; };
+    Storage.prototype.setItem = function(key, value) {
+      if (this === localStorage && key.startsWith('foil_doc_')) throw new DOMException('Full', 'QuotaExceededError');
+      return original.call(this, key, value);
+    };
+  });
+  await page.locator('[contenteditable="true"]').fill('Unsaved but still visible');
+  await expect(page.locator('.save-error')).toHaveText('not saved');
+  await expect(page.locator('.save-error')).toHaveAttribute('title', /storage is full/);
+  expect(await documents(page)).toEqual(before);
+  await page.getByTitle('Switch document', { exact: true }).click();
+  await page.locator('.doc-switcher-row-main').filter({ has: page.getByText('Saved target', { exact: true }) }).click();
+  expect(await binding(page)).toBe(sourceId);
+  expect(await snapshot(page)).toBe('Unsaved but still visible');
+  expect(await documents(page)).toEqual(before);
+  await page.evaluate(() => (window as unknown as { restoreWrites: () => void }).restoreWrites());
+  await selectDocument(page, 'Saved target');
+  expect((await documents(page))[`foil_doc_${sourceId}`].md).toBe('Unsaved but still visible');
+  await selectDocument(page, 'Unsaved source');
+  await expect(page.locator('.save-error')).toHaveCount(0);
+  await page.reload();
+  await expect.poll(() => snapshot(page)).toBe('Unsaved but still visible');
+});

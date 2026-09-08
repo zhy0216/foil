@@ -9,6 +9,27 @@ A markdown editor that lives entirely in your browser. Type, format, share a lin
 
 Open Foil on [Cloudflare Pages](https://foil-47v.pages.dev/). If that site is unavailable, use the [GitHub Pages backup](https://zhy0216.github.io/foil/).
 
+Foil also has a local **Chrome/Edge Manifest V3 extension**. Its toolbar button opens the full packaged editor in a new tab. The website and extension share the same editor and file formats, with separate local libraries.
+
+## Install the extension locally
+
+With Node 22.22.3 and Bun 1.4.2, run from this repository:
+
+```bash
+bun install --frozen-lockfile
+bun run typecheck
+bun run test
+bun run --cwd apps/extension package
+```
+
+Open `chrome://extensions` in Chrome or `edge://extensions` in Edge, enable **Developer mode**, select **Load unpacked**, and choose `apps/extension/dist`. Pin Foil from the Extensions menu, then click its icon to open the editor. Each click opens a new tab; installing it opens none. To use `apps/extension/artifacts/foil-extension-0.1.0.zip`, extract it and load the directory containing `manifest.json`. This ZIP is a local deliverable, not a published store listing. See the [extension guide](apps/extension/README.md) for watch/reload commands and configuration, and the official [Chrome](https://developer.chrome.com/docs/extensions/get-started/tutorial/hello-world#load-unpacked) and [Edge](https://learn.microsoft.com/en-us/microsoft-edge/extensions/getting-started/extension-sideloading) instructions.
+
+Extension links and exported files use `https://foil-47v.pages.dev/` by default. Set `VITE_FOIL_SHARE_BASE_URL` at build time to use another HTTP(S) website, including a subpath. **Open shared link** accepts a deliberately pasted website URL or Foil fragment, opens a read-only packaged preview, and never visits the pasted host. Pass any password/time gates, then select **Edit anyway** to add a local copy. This does not synchronize or migrate the website library.
+
+Local editing and ordinary/password sharing and files work offline, including first export and file re-export. Time capsules require drand when sealing or decrypting. Extension documents and settings live in the browser profile; clearing extension data or uninstalling can remove them. Keep exported backups. There is no cloud sync or guarantee against storage exhaustion or simultaneous edits to the same document.
+
+Automated tests load the production extension in bundled Playwright Chromium and open actual downloaded files in Chromium and WebKit. They exercise the compiled toolbar handler through DevTools. Native toolbar clicking and manual installations in branded Chrome/Edge have not been performed; automated Chromium results do not establish that manual coverage.
+
 ## Privacy
 
 **There is no backend. There is no database. Nothing you write leaves your device.**
@@ -96,6 +117,10 @@ apps/
     src/                     # Website mounting entry
     tests/e2e/               # Playwright website and local-file tests
     dist/                    # Generated static website (ignored)
+  extension/                 # @foil/extension: MV3 toolbar + packaged editor tab
+    tests/e2e/               # Installed Chromium and cross-host/file regressions
+    dist/                    # Load unpacked from here (ignored)
+    artifacts/               # Verified extension ZIP (ignored)
 packages/
   editor/                    # @foil/editor: source-first shared application
     src/                     # Editor, standalone reader, assets and unit tests
@@ -114,16 +139,16 @@ Run these commands from the repository root with the versions pinned in `.node-v
 
 ```bash
 bun install --frozen-lockfile
-bun run dev       # run workspace dev servers (Foil: port 5173)
-bun run build     # typecheck + bundle; Foil output: apps/web/dist/
+bun run dev       # website on 5173 + extension build watcher (no port)
+bun run build     # typecheck + bundle both apps into their own dist/
 bun run preview   # serve the already-built bundle
 bun run typecheck
 bun run test      # all unit/component tests; run before builds, not concurrently
 bun run test:e2e:install # first use: install Chromium + WebKit; Linux CI adds --with-deps
-bun run test:e2e   # production build, then Chromium + WebKit website/file tests
+bun run test:e2e   # builds/ZIP, website + installed extension + actual local files
 ```
 
-Root commands use Turbo. Unit tests run once in `@foil/editor`; the website owns the browser suite. `build`, `typecheck` and `test` are cached in `.turbo/`; browser tests always run and depend on the production build. Dev and preview servers are persistent and uncached. Limit a task with `--filter=@foil/web`. For package-specific arguments, invoke the installed Turbo CLI directly with `bunx --no-install` so Bun's script runner does not consume Turbo's `--` separator:
+Root commands use Turbo. Shared unit tests run once in `@foil/editor`, and extension unit tests run in `@foil/extension`. Both apps own browser suites. `build`, `typecheck` and `test` are cached in `.turbo/`; browser tests always run. Extension e2e explicitly depends on both app builds and its checked `package:dist` ZIP, without an app-to-app runtime dependency. Dev and preview servers are persistent and uncached. Limit a task with `--filter=@foil/web`. For package-specific arguments, invoke the installed Turbo CLI directly with `bunx --no-install` so Bun's script runner does not consume Turbo's `--` separator:
 
 ```bash
 bun run dev --filter=@foil/web
@@ -139,7 +164,9 @@ FOIL_E2E_BASE=/ bun run --cwd apps/web test:e2e --workers=2
 bun run build # restore the default /foil/ artifact
 ```
 
-`FOIL_E2E_PORT=4273` can select a free preview port for either test command. The package-level `test:e2e` runs Playwright against the existing build, so use it for the root-path variant; the root-level Turbo command first ensures the default `/foil/` build. Do not run two builds against the same `apps/web/dist/`. To run only the file matrix after a matching build, use `bun run --cwd apps/web test:e2e tests/e2e/html-export.spec.ts --workers=2` (add `FOIL_E2E_BASE=/` for a root build). Downloads and reports stay in ignored Playwright output directories under `apps/web/`; tests use only fixtures from the current checkout and never use public drand services. WebKit file tests reject all HTTP(S) through routing instead of Playwright's offline switch, which also prevents static file navigation.
+`FOIL_E2E_PORT` selects the website suite's preview port (default 4173); `FOIL_EXTENSION_E2E_PORT` independently selects extension recipients' preview port (default 4273). Both are strict, never reuse another server, and are explicitly forwarded by Turbo alongside `FOIL_E2E_BASE`, `VITE_*` and Playwright environment settings. Each app defaults to two workers locally and one in CI. The package-level `test:e2e` runs against existing outputs, so use it for the root-path variant; the root-level command ensures the default `/foil/` build. Do not run two builds against the same `apps/web/dist/`. To run only the website file matrix after a matching build, use `bun run --cwd apps/web test:e2e tests/e2e/html-export.spec.ts --workers=2` (add `FOIL_E2E_BASE=/` for a root build).
+
+Downloads, traces, screenshots and reports stay in ignored `test-results/` and `playwright-report/` directories under their owning app. Extension tests remove temporary profiles even after failures. The root browser command lets independent suites finish after a sibling failure, preserving their diagnostics and normal server cleanup, while still failing overall. Tests use only current-checkout website assets and fixed verified drand fixtures; unexpected HTTP(S) fails. WebKit file tests reject HTTP(S) through routing because its offline switch also prevents static `file://` navigation. CI retains both apps' failure diagnostics and a verified extension ZIP for review. Pages uploads remain limited to `apps/web/dist`.
 
 The shared `@foil/editor` package exports `App` and `AppProps`, `@foil/editor/share` (HTTP(S) base normalization and URL codec helpers/limits), `@foil/editor/types`, `@foil/editor/standalone-runtime` (resource types/IDs and validation), the two `styles/*.css` entries and `brand/*.svg` assets. Hosts mount `<App />` for current-origin/path sharing, or pass `shareBaseUrl` and a React `headerActions` slot. The slot appears beside Settings/Share in editing and read-only headers.
 

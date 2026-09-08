@@ -13,7 +13,7 @@ async function fixture(): Promise<PackageFiles> {
     'manifest.json': bytes(JSON.stringify(manifest)),
     'index.html': bytes('<link rel="icon" href="./icons/32.png"><script type="module" src="./assets/index-abc.js"></script>'),
     'background.js': bytes('chrome.action.onClicked.addListener(async()=>{});'),
-    'foil-standalone.js': bytes('export default {script:"reader",styles:"body{}"};'),
+    'foil-standalone.js': bytes('export default {"script":"reader","styles":"body{}"};'),
     'assets/index-abc.js': bytes('import("./crypto-abc.js");'),
     'assets/crypto-abc.js': bytes('export const local = true;'),
     ...Object.fromEntries(await Promise.all(ICON_SIZES.map(async size => [
@@ -58,6 +58,8 @@ it.each([
   ['assets/index-abc.js', 'import("https://example.com/remote.js");'],
   ['assets/styles-abc.css', '@import "https://example.com/style.css";'],
   ['background.js', 'import "./assets/index-abc.js";'],
+  ['foil-standalone.js', 'export default {"script":"","styles":"body{}"};'],
+  ['foil-standalone.js', 'export default globalThis.remoteReader;'],
 ])('rejects nonlocal resources, inline code and worker dependencies in %s', async (name, source) => {
   const files = await fixture();
   files[name] = bytes(source);

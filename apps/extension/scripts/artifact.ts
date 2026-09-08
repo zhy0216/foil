@@ -3,6 +3,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import { posix, resolve } from 'node:path';
 import { init, parse } from 'es-module-lexer';
 import { zipSync, unzipSync } from 'fflate';
+import { parseStandaloneRuntime } from '@foil/editor/standalone-runtime';
 import { ICON_SIZES, validateManifest } from './manifest';
 
 export type PackageFiles = Record<string, Uint8Array>;
@@ -38,7 +39,10 @@ export async function checkFiles(files: PackageFiles) {
   const manifest: unknown = JSON.parse(content('manifest.json'));
   validateManifest(manifest);
   content('background.js');
-  assert.match(content('foil-standalone.js'), /^export default /);
+  const resource = content('foil-standalone.js').match(/^export default ([\s\S]+);\s*$/);
+  assert(resource, 'Invalid standalone resource module');
+  // Inspect inert resource data without executing privileged or reader code.
+  parseStandaloneRuntime(JSON.parse(resource[1]));
   function localReference(reference: string, from: string) {
     assert(reference.startsWith('./') || reference.startsWith('../'), `Non-relative resource in ${from}: ${reference}`);
     const name = posix.normalize(posix.join(posix.dirname(from), reference));

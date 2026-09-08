@@ -35,10 +35,24 @@ runs:
       run: bun run test:e2e:install --with-deps
       shell: bash
 
-    # Turbo builds apps/web/dist before starting the CSP-protected static preview.
-    - name: Build and run browser smoke tests
+    # Explicit phase order keeps real password KDF units clear of builds/browsers.
+    - name: Build both applications
+      run: bun run build
+      shell: bash
+
+    # Turbo reuses those builds, packages the extension once, and gives each
+    # browser suite its own strict preview port. The ZIP is loaded after extraction.
+    - name: Run website, installed extension and local-file browser tests
       run: bun run test:e2e
       shell: bash
+
+    - name: Keep the verified extension package for local review
+      uses: actions/upload-artifact@v5
+      with:
+        name: foil-extension
+        path: apps/extension/artifacts/foil-extension-*.zip
+        if-no-files-found: error
+        retention-days: 7
 
     - name: Keep browser failure diagnostics
       if: failure()
@@ -48,5 +62,7 @@ runs:
         path: |
           apps/web/playwright-report/
           apps/web/test-results/
+          apps/extension/playwright-report/
+          apps/extension/test-results/
         if-no-files-found: ignore
         retention-days: 7

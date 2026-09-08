@@ -8,8 +8,10 @@
     "build": "bun scripts/check-config.ts && tsc -b && vite build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:e2e": "playwright test",
     "check": "bun scripts/check.ts",
     "package": "bun run build && bun scripts/package.ts",
+    "package:dist": "bun scripts/package.ts",
     "icons": "bun scripts/icons.ts"
   },
   "dependencies": {

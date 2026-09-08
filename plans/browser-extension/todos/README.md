@@ -2,7 +2,7 @@
 
 Plan: [../plan.md](../plan.md). Deliver `apps/extension` as a packaged Chrome/Edge Manifest V3 editor sharing the existing Foil runtime, with public website links, HTML export, explicit share-link import, and installed-package browser tests.
 
-Status: 01 is merged and cleaned at `86d6aaa18b2525a7ab0f147d4ddb1a6fe30ee460`; 02 is merged and cleaned at `ed3294d4305d89582be9133bc09c4b1434706586`; 03 is complete in its isolated task branch and awaits explicit coordinator integration; 04 is pending. Product: a Chrome/Edge MV3 toolbar button opens the full editor in a new tab. Honor any later user correction before starting dependent work.
+Status: 01 is merged and cleaned at `86d6aaa18b2525a7ab0f147d4ddb1a6fe30ee460`; 02 is merged and cleaned at `ed3294d4305d89582be9133bc09c4b1434706586`; 03 is integrated and cleaned at `7b195b6c99688c744b5cce21b40e412b3ec92cb1`; 04 is complete in its isolated task branch and awaits explicit coordinator integration. Product: a Chrome/Edge MV3 toolbar button opens the full editor in a new tab. Honor any later user correction before starting dependent work.
 
 ## Execution preferences
 
@@ -18,8 +18,8 @@ Coordinator: `codex` / `gpt-6-astra` / `high`. Task mapping: hard → `gpt-6-ast
 | --- | --- | --- | --- | --- | --- | --- |
 | [01-shared-editor.md](done/01-shared-editor.md) | Merged and cleaned (`86d6aaa`) | P1 | hard | codex, inherited default | gpt-6-astra / max | Extract the existing application and standalone builder into a shared workspace package with a small host boundary |
 | [02-extension-package.md](done/02-extension-package.md) | Merged and cleaned (`ed3294d`) | P1 | hard | codex, inherited default | gpt-6-astra / max | Package the real Manifest V3 editor, action worker, local assets, share-base configuration, icons and ZIP command |
-| [03-share-link-import.md](done/03-share-link-import.md) | Complete; awaiting integration | P1 | medium | codex, inherited default | gpt-6-astra / xhigh | Accept a deliberately pasted share link and open the existing read-only/protected/fork workflow in a new extension tab |
-| [04-extension-regressions.md](04-extension-regressions.md) | Pending | P1 | hard | codex, inherited default | gpt-6-astra / max | Exercise the installed package, cross-host sharing and files; wire CI and document build/install/privacy behavior |
+| [03-share-link-import.md](done/03-share-link-import.md) | Integrated and cleaned (`7b195b6`) | P1 | medium | codex, inherited default | gpt-6-astra / xhigh | Accept a deliberately pasted share link and open the existing read-only/protected/fork workflow in a new extension tab |
+| [04-extension-regressions.md](done/04-extension-regressions.md) | Complete; awaiting integration | P1 | hard | codex, inherited default | gpt-6-astra / max | Exercise the installed package, cross-host sharing and files; wire CI and document build/install/privacy behavior |
 
 ## 文件
 
@@ -33,11 +33,11 @@ Coordinator: `codex` / `gpt-6-astra` / `high`. Task mapping: hard → `gpt-6-ast
 
 3. [03-share-link-import.md](done/03-share-link-import.md)
 
-   Completed locally; see its archived parser/API contract, acceptance evidence and exact installed smoke selectors/artifacts for 04. Depends on integrated `02-extension-package.md` (and 01 transitively). Owns the extension import parser/dialog and its mounting through the shared host action slot. Keep browser-specific logic in the extension.
+   Integrated and cleaned at `7b195b6`; see its archived parser/API contract, acceptance evidence and exact installed smoke selectors/artifacts reused by 04. Depends on integrated `02-extension-package.md` (and 01 transitively). Owns the extension import parser/dialog and its mounting through the shared host action slot. Keep browser-specific logic in the extension.
 
-4. [04-extension-regressions.md](04-extension-regressions.md)
+4. [04-extension-regressions.md](done/04-extension-regressions.md)
 
-   Depends on `03-share-link-import.md` (and 01/02 transitively). Owns installed-extension Playwright tests, final package assertions, CI integration/artifacts, root/extension documentation, and final cross-host/file regressions.
+   Completed locally; see its archived 876-unit/55-browser acceptance evidence, alternate-base and configured-share results, checked ZIP/report paths, diagnosed failures and coordinator notice for the minimal shared password-cancellation fix. Awaits explicit integration. Depends on integrated `03-share-link-import.md` (and 01/02 transitively). Owns installed-extension Playwright tests, final package assertions, CI integration/artifacts, root/extension documentation, and final cross-host/file regressions.
 
 Execution: `01 → 02 → 03 → 04`. No safe parallel tasks in this queue: source APIs, app scaffolding, root lockfile and entry integration form a dependency chain. Each task uses a separate worktree and produces one final implementation commit; rebase on the merged dependency before starting. Execute only this queue, not outstanding todos from other plans.
 
