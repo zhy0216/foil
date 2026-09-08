@@ -1,11 +1,26 @@
-import { expect, test, type BrowserContext, type Page } from '@playwright/test';
+import { expect, test as base, type BrowserContext, type Page } from '@playwright/test';
+
+const test = base.extend<{ recipient: Page }>({
+  recipient: async ({ browser }, use) => {
+    // A recipient must decrypt the link without access to the author's local docs.
+    const context = await browser.newContext({ serviceWorkers: 'block', timezoneId: 'UTC' });
+    try {
+      await use(await context.newPage());
+    } finally {
+      await context.close();
+    }
+  },
+});
+
+test.use({ timezoneId: 'UTC' });
 
 const PASSWORD = 'correct horse battery staple';
 const DOCUMENT_MARKER = 'e2e sharing marker: 跨浏览器密码分享';
 
 // This is the same pinned quicknet information used by the time-capsule unit
-// tests. The round-1000 beacon is a real, verified beacon, so the browser runs
-// the actual tlock encryption/decryption code while the test remains offline.
+// tests. Round 992 publishes on a whole minute, matching datetime-local input
+// precision. Its real beacon lets the browser run actual tlock encryption and
+// signature verification while every drand request is fulfilled offline.
 const DRAND_INFO = {
   hash: '52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971',
   public_key:
@@ -18,10 +33,10 @@ const DRAND_INFO = {
 };
 
 const DRAND_BEACON = {
-  round: 1000,
-  randomness: 'fe290beca10872ef2fb164d2aa4442de4566183ec51c56ff3cd603d930e54fdd',
+  round: 992,
+  randomness: '5c7adf1800f7878909a9c31bf254fe0be3f8d7939f70dd30e3cc78754d1f86df',
   signature:
-    'b44679b9a59af2ec876b1a6b1ad52ea9b1615fc3982b19576350f93447cb1125e342b73a8dd2bacbe47e4b6b63ed5e39',
+    '84ded69151cf00341cb8d11a15472e44e5268046ab6c2301ff74ed3aab9b517c857191506eda83dd8442c9d6752cfeca',
 };
 
 const DRAND_ORIGINS = new Set([
@@ -31,23 +46,14 @@ const DRAND_ORIGINS = new Set([
   'https://api3.drand.sh',
 ]);
 
-const ROUND_1000_UNLOCK_MS = (DRAND_INFO.genesis_time + (DRAND_BEACON.round - 1) * DRAND_INFO.period) * 1000;
+const UNLOCK_MS = (DRAND_INFO.genesis_time + (DRAND_BEACON.round - 1) * DRAND_INFO.period) * 1000;
 
-type ClockWindow = Window & {
-  __foilAdvanceTime?: (ms: number) => void;
-};
-
-async function installClock(page: Page, now: number) {
-  await page.addInitScript((initialNow) => {
-    let current = initialNow;
-    Date.now = () => current;
-    (window as ClockWindow).__foilAdvanceTime = (ms: number) => {
-      current += ms;
-    };
-  }, now);
-}
-
-async function routeLocalAndDrand(context: BrowserContext, baseURL: string, externalRequests: string[]) {
+async function routeLocalAndDrand(
+  context: BrowserContext,
+  baseURL: string,
+  externalRequests: string[],
+  drandRequests: string[] = [],
+) {
   const origin = new URL(baseURL).origin;
   await context.route('**/*', async (route) => {
     const url = new URL(route.request().url());
@@ -56,6 +62,7 @@ async function routeLocalAndDrand(context: BrowserContext, baseURL: string, exte
       return;
     }
     if (DRAND_ORIGINS.has(url.origin) && url.pathname.endsWith('/info')) {
+      drandRequests.push('info');
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -64,6 +71,7 @@ async function routeLocalAndDrand(context: BrowserContext, baseURL: string, exte
       return;
     }
     if (DRAND_ORIGINS.has(url.origin) && url.pathname.endsWith(`/public/${DRAND_BEACON.round}`)) {
+      drandRequests.push('beacon');
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -93,88 +101,148 @@ async function enterMarker(page: Page) {
   return editorSnapshot(page);
 }
 
-async function createPasswordLink(page: Page, password = PASSWORD) {
+async function createPasswordLink(page: Page, unlock?: '+1 hour' | 'Custom') {
   await page.getByRole('button', { name: /Share/ }).click();
   await expect(page.getByRole('heading', { name: 'Share this document' })).toBeVisible();
   await page.getByRole('switch').nth(0).click();
-  await page.locator('input[type="password"]').fill(password);
+  await page.locator('input[type="password"]').fill(PASSWORD);
+  if (unlock) {
+    await page.getByRole('switch').nth(1).click();
+    await page.getByRole('button', { name: unlock, exact: true }).click();
+    if (unlock === 'Custom') {
+      // Both browser contexts use UTC, so the local input matches this ISO date.
+      await page.locator('input[type="datetime-local"]').fill(new Date(UNLOCK_MS).toISOString().slice(0, 16));
+    }
+    await expect(page.locator('.tc-readout-sub')).toContainText(`drand round #${DRAND_BEACON.round}`);
+  }
   const link = page.locator('.url-row input');
-  await expect(link).toHaveValue(/#e=/, { timeout: 30_000 });
+  await expect(link).toHaveValue(unlock ? /#te=[A-Za-z0-9_-]+$/ : /#e=[A-Za-z0-9_-]+$/, { timeout: 30_000 });
   return link.inputValue();
 }
 
-test('opens a password-only share with the correct password and preserves the document', async ({ page, context, baseURL }) => {
-  const externalRequests: string[] = [];
-  await routeLocalAndDrand(context, baseURL!, externalRequests);
-  await page.goto('./');
-  const sourceSnapshot = await enterMarker(page);
-
-  const shareURL = await createPasswordLink(page);
-  expect(shareURL).toMatch(/#e=[A-Za-z0-9_-]+$/);
-  expect(shareURL).not.toContain('#te=');
-
-  const recipient = await context.newPage();
-  await recipient.goto(shareURL);
+async function expectPasswordGate(recipient: Page) {
   await expect(recipient.getByRole('heading', { name: 'This document is encrypted' })).toBeVisible();
   await expect(recipient.getByRole('heading', { name: /Time capsule/ })).toHaveCount(0);
+  await expect(recipient.locator('.editor')).toHaveCount(0);
+  await expect(recipient.getByText(DOCUMENT_MARKER, { exact: false })).toHaveCount(0);
   expect(new URL(recipient.url()).hash).toBe('');
+}
 
-  const passwordInput = recipient.locator('input[type="password"]');
-  await passwordInput.fill('wrong password');
+async function expectSharedDocument(recipient: Page, sourceSnapshot: string) {
+  await expect(recipient.locator('.editor.readonly')).toBeVisible({ timeout: 30_000 });
+  await expect(recipient.locator('.editor')).toHaveAttribute('contenteditable', 'false');
+  await expect(recipient.locator('.editor')).toContainText(DOCUMENT_MARKER);
+  await expect.poll(() => editorSnapshot(recipient)).toBe(sourceSnapshot);
+  await expect(recipient.getByRole('heading', { name: 'This document is encrypted' })).toHaveCount(0);
+  await expect(recipient.getByRole('heading', { name: /Time capsule/ })).toHaveCount(0);
+  await expect(recipient.getByText('Viewing shared link')).toBeVisible();
+}
+
+for (const attempt of ['on the first try', 'after a wrong password'] as const) {
+  test(`opens a password-only share with the correct password ${attempt}`, async ({ page, context, recipient, baseURL }) => {
+    const externalRequests: string[] = [];
+    const drandRequests: string[] = [];
+    await routeLocalAndDrand(context, baseURL!, externalRequests, drandRequests);
+    await routeLocalAndDrand(recipient.context(), baseURL!, externalRequests, drandRequests);
+    await page.goto('./');
+    const sourceSnapshot = await enterMarker(page);
+
+    const shareURL = await createPasswordLink(page);
+    await recipient.goto(shareURL);
+    await expectPasswordGate(recipient);
+
+    const passwordInput = recipient.locator('input[type="password"]');
+    if (attempt === 'after a wrong password') {
+      await passwordInput.fill('wrong password');
+      await recipient.getByRole('button', { name: 'Unlock' }).click();
+      await expect(recipient.getByText('Wrong password or corrupt link.')).toBeVisible();
+      await expectPasswordGate(recipient);
+    }
+
+    await passwordInput.fill(PASSWORD);
+    await passwordInput.press('Enter');
+    await expectSharedDocument(recipient, sourceSnapshot);
+    await expect(recipient.getByText('Wrong password or corrupt link.')).toHaveCount(0);
+    expect(drandRequests).toEqual([]);
+    expect(externalRequests).toEqual([]);
+  });
+}
+
+for (const unlock of ['+1 hour', 'Custom'] as const) {
+  test(`opens a password-protected time capsule only when its ${unlock} unlock date is reached`, async ({ page, context, recipient, baseURL }) => {
+    const externalRequests: string[] = [];
+    const recipientDrandRequests: string[] = [];
+    await routeLocalAndDrand(context, baseURL!, externalRequests);
+    await routeLocalAndDrand(recipient.context(), baseURL!, externalRequests, recipientDrandRequests);
+
+    // Generate a capsule for the fixed beacon, then open it one minute before
+    // release. Fixed clocks avoid real waits and wall-clock dependence.
+    await page.clock.setFixedTime(UNLOCK_MS - 3_600_000);
+    await page.goto('./');
+    const sourceSnapshot = await enterMarker(page);
+    const shareURL = await createPasswordLink(page, unlock);
+
+    await recipient.clock.setFixedTime(UNLOCK_MS - 60_000);
+    await recipient.goto(shareURL);
+    await expectPasswordGate(recipient);
+    expect(recipientDrandRequests).toEqual([]);
+
+    await recipient.locator('input[type="password"]').fill(PASSWORD);
+    await recipient.getByRole('button', { name: 'Unlock' }).click();
+    await expect(recipient.getByRole('heading', { name: /Time capsule/ })).toBeVisible();
+    await expect(recipient.getByRole('heading', { name: 'This document is encrypted' })).toHaveCount(0);
+    await expect(recipient.locator('.tc-countdown-time')).toHaveText('00:01:00');
+    await expect(recipient.getByRole('button', { name: 'Decrypt', exact: true })).toBeHidden();
+    await expect(recipient.locator('.editor')).toHaveCount(0);
+
+    await recipient.clock.setFixedTime(UNLOCK_MS - 1000);
+    await expect(recipient.locator('.tc-countdown-time')).toHaveText('00:00:01');
+    await expect(recipient.getByRole('button', { name: 'Decrypt', exact: true })).toBeHidden();
+    await expect(recipient.locator('.editor')).toHaveCount(0);
+    await expect(recipient.getByText(DOCUMENT_MARKER, { exact: false })).toHaveCount(0);
+    expect(recipientDrandRequests).toEqual([]);
+
+    await recipient.clock.setFixedTime(UNLOCK_MS);
+    await expect(recipient.getByText('Unsealed', { exact: true })).toBeVisible();
+    await expect(recipient.getByRole('button', { name: 'Decrypt', exact: true })).toBeEnabled();
+    await expect(recipient.locator('.editor')).toHaveCount(0);
+    expect(recipientDrandRequests).toEqual([]);
+    await recipient.getByRole('button', { name: 'Decrypt', exact: true }).click();
+    await expectSharedDocument(recipient, sourceSnapshot);
+    expect(recipientDrandRequests).toContain('beacon');
+    expect(externalRequests).toEqual([]);
+  });
+}
+
+test('still requires the correct password when a custom unlock date has already passed', async ({ page, context, recipient, baseURL }) => {
+  const externalRequests: string[] = [];
+  const recipientDrandRequests: string[] = [];
+  await routeLocalAndDrand(context, baseURL!, externalRequests);
+  await routeLocalAndDrand(recipient.context(), baseURL!, externalRequests, recipientDrandRequests);
+  await page.clock.setFixedTime(UNLOCK_MS - 3_600_000);
+  await page.goto('./');
+  const sourceSnapshot = await enterMarker(page);
+  const shareURL = await createPasswordLink(page, 'Custom');
+
+  await recipient.clock.setFixedTime(UNLOCK_MS + 60_000);
+  await recipient.goto(shareURL);
+  await expectPasswordGate(recipient);
+  await recipient.locator('input[type="password"]').fill('wrong password');
   await recipient.getByRole('button', { name: 'Unlock' }).click();
   await expect(recipient.getByText('Wrong password or corrupt link.')).toBeVisible();
-  await expect(recipient.locator('.editor')).toHaveCount(0);
+  await expectPasswordGate(recipient);
+  expect(recipientDrandRequests).toEqual([]);
 
-  await passwordInput.fill(PASSWORD);
-  await recipient.getByRole('button', { name: 'Unlock' }).click();
-  await expect(recipient.locator('.editor.readonly')).toBeVisible();
-  await expect(recipient.locator('.editor')).toContainText(DOCUMENT_MARKER);
-  await expect.poll(() => editorSnapshot(recipient)).toBe(sourceSnapshot);
-  await expect(recipient.getByRole('heading', { name: /Time capsule/ })).toHaveCount(0);
-  await expect(recipient.getByText('Viewing shared link')).toBeVisible();
-  expect(externalRequests).toEqual([]);
-});
-
-test('opens a password-protected time capsule after the one-minute wait', async ({ page, context, baseURL }) => {
-  const externalRequests: string[] = [];
-  await routeLocalAndDrand(context, baseURL!, externalRequests);
-
-  // Generate a round-1000 capsule with the one-hour preset. The recipient is
-  // then placed one minute before that same round so the test can advance the
-  // unlock wait without sleeping for an hour or relying on wall-clock dates.
-  await installClock(page, ROUND_1000_UNLOCK_MS - 3_600_000);
-  await page.goto('./');
-  const sourceSnapshot = await enterMarker(page);
-  await page.getByRole('button', { name: /Share/ }).click();
-  await expect(page.getByRole('heading', { name: 'Share this document' })).toBeVisible();
-  const switches = page.getByRole('switch');
-  await switches.nth(0).click();
-  await page.locator('input[type="password"]').fill(PASSWORD);
-  await switches.nth(1).click();
-  await page.getByRole('button', { name: '+1 hour' }).click();
-  const link = page.locator('.url-row input');
-  await expect(link).toHaveValue(/#te=/, { timeout: 30_000 });
-  const shareURL = await link.inputValue();
-  expect(shareURL).toMatch(/#te=[A-Za-z0-9_-]+$/);
-
-  const recipient = await context.newPage();
-  await installClock(recipient, ROUND_1000_UNLOCK_MS - 60_000);
-  await recipient.goto(shareURL);
-  await expect(recipient.getByRole('heading', { name: 'This document is encrypted' })).toBeVisible();
-
-  const passwordInput = recipient.locator('input[type="password"]');
-  await passwordInput.fill(PASSWORD);
+  await recipient.locator('input[type="password"]').fill(PASSWORD);
   await recipient.getByRole('button', { name: 'Unlock' }).click();
   await expect(recipient.getByRole('heading', { name: /Time capsule/ })).toBeVisible();
-  await expect(recipient.locator('.tc-countdown-time')).toHaveText(/00:01:00/);
-  await expect(recipient.getByRole('button', { name: 'Decrypt' })).toBeHidden();
-
-  await recipient.evaluate(() => (window as ClockWindow).__foilAdvanceTime?.(61_000));
-  await expect(recipient.getByText('Unsealed')).toBeVisible({ timeout: 5_000 });
+  await expect(recipient.getByText('Unsealed', { exact: true })).toBeVisible();
+  await expect(recipient.locator('.tc-countdown-time')).toHaveCount(0);
+  await expect(recipient.getByRole('button', { name: 'Decrypt' })).toBeEnabled();
+  await expect(recipient.locator('.editor')).toHaveCount(0);
+  expect(recipientDrandRequests).toEqual([]);
   await recipient.getByRole('button', { name: 'Decrypt' }).click();
-  await expect(recipient.locator('.editor.readonly')).toBeVisible({ timeout: 30_000 });
-  await expect(recipient.locator('.editor')).toContainText(DOCUMENT_MARKER);
-  await expect.poll(() => editorSnapshot(recipient)).toBe(sourceSnapshot);
-  await expect(recipient.getByText('Viewing shared link')).toBeVisible();
+  await expectSharedDocument(recipient, sourceSnapshot);
+  expect(recipientDrandRequests).toContain('beacon');
   expect(externalRequests).toEqual([]);
 });
