@@ -67,7 +67,7 @@ The password layer is always outermost, so someone without the password cannot r
 
 **Loading a shared link.** On load, if the URL has a fragment, Foil decodes it and clears the fragment from the address bar. Password links prompt for the password; time capsules show an unlock screen and stay sealed until drand publishes the unlock round. Once open, the document renders read-only — click the edit affordance to fork it into your local library.
 
-See `src/lib/url-codec.ts` (packing), `src/lib/timecapsule.ts` (drand tlock), and `src/lib/doc-store.ts` (local storage) for the full implementations.
+See `apps/web/src/lib/url-codec.ts` (packing), `apps/web/src/lib/timecapsule.ts` (drand tlock), and `apps/web/src/lib/doc-store.ts` (local storage) for the full implementations.
 
 ## Features
 
@@ -81,26 +81,57 @@ See `src/lib/url-codec.ts` (packing), `src/lib/timecapsule.ts` (drand tlock), an
 - Light/dark/auto theme, configurable accent, prose font, width, and density
 - Keyboard shortcuts: ⌘B / ⌘I / ⌘K
 
+## Repository layout
+
+This is a [Turborepo](https://turborepo.com/docs/crafting-your-repository/structuring-a-repository) monorepo using Bun workspaces and one root lockfile.
+
+```text
+apps/
+  web/                       # @foil/web: the Foil website
+    src/                     # React app, standalone reader and unit tests
+    tests/e2e/               # Playwright website and local-file tests
+    build/                   # Standalone HTML build plugin
+    dist/                    # Generated static website (ignored)
+packages/
+  typescript-config/         # @foil/typescript-config: base and React TS configs
+turbo.json                   # Task dependencies and cache settings
+package.json                # Workspace definitions and root commands
+bun.lock                    # Shared dependency lockfile
+```
+
+New applications belong in `apps/<name>` and shared libraries/configuration in `packages/<name>`. Give each a unique package name (for example `@foil/api`) and its own `package.json`, scripts and dependencies, then run `bun install` at the repository root. Declare internal dependencies with `workspace:*`; React apps can depend on `@foil/typescript-config` and extend `@foil/typescript-config/react.json`. Turbo discovers matching scripts automatically. Use a different development port for each app.
+
 ## Develop
+
+Run these commands from the repository root with the versions pinned in `.node-version` and `package.json` (Node 22.22.3 and Bun 1.4.2):
 
 ```bash
 bun install --frozen-lockfile
-bun run dev       # vite dev server
-bun run build     # typecheck + bundle to dist/
-bun run preview   # serve the built bundle
+bun run dev       # run workspace dev servers (Foil: port 5173)
+bun run build     # typecheck + bundle; Foil output: apps/web/dist/
+bun run preview   # serve the already-built bundle
 bun run typecheck
 bun run test      # all unit/component tests; run before builds, not concurrently
-bun run test:e2e --workers=2 # production build, then Chromium + WebKit website/file tests
+bun run test:e2e:install # first use: install Chromium + WebKit; Linux CI adds --with-deps
+bun run test:e2e   # production build, then Chromium + WebKit website/file tests
+```
+
+Root commands use Turbo. `build`, `typecheck` and `test` are cached in `.turbo/`; browser tests always run and depend on the production build. Dev and preview servers are persistent and uncached. Limit a task with `--filter=@foil/web`. For package-specific arguments, invoke the installed Turbo CLI directly with `bunx --no-install` so Bun's script runner does not consume Turbo's `--` separator:
+
+```bash
+bun run dev --filter=@foil/web
+bunx --no-install turbo run test --filter=@foil/web -- src/lib/url-codec.test.ts
+bunx --no-install turbo run test:e2e -- --workers=2
 ```
 
 For root-path regression, finish the default suite first, then run these commands sequentially:
 
 ```bash
-bun run build --base /
-FOIL_E2E_BASE=/ bunx playwright test --workers=2
+bunx --no-install turbo run build --filter=@foil/web -- --base /
+FOIL_E2E_BASE=/ bun run --cwd apps/web test:e2e --workers=2
 ```
 
-`FOIL_E2E_PORT=4273` can select a free preview port for either test command. Do not run two builds against the same `dist/`. To run only the file matrix after a matching build, use `bunx playwright test tests/e2e/html-export.spec.ts --workers=2` (add `FOIL_E2E_BASE=/` for a root build). Downloads and reports stay in ignored Playwright output directories; tests use only fixtures from the current checkout and never use public drand services. WebKit file tests reject all HTTP(S) through routing instead of Playwright's offline switch, which also prevents static file navigation.
+`FOIL_E2E_PORT=4273` can select a free preview port for either test command. The package-level `test:e2e` runs Playwright against the existing build, so use it for the root-path variant; the root-level Turbo command first ensures the default `/foil/` build. Do not run two builds against the same `apps/web/dist/`. To run only the file matrix after a matching build, use `bun run --cwd apps/web test:e2e tests/e2e/html-export.spec.ts --workers=2` (add `FOIL_E2E_BASE=/` for a root build). Downloads and reports stay in ignored Playwright output directories under `apps/web/`; tests use only fixtures from the current checkout and never use public drand services. WebKit file tests reject all HTTP(S) through routing instead of Playwright's offline switch, which also prevents static file navigation.
 
 Stack: React 18 + TypeScript + Vite, with `buffer`, `tlock-js` and `drand-client` for time capsules. Website crypto stays dynamically loaded. The standalone reader includes crypto and styles in one file; its resource module is loaded by the website only when exporting HTML. Each build checks that the standalone entry has no editor/document-library dependencies or external chunks.
 
@@ -114,6 +145,8 @@ bun run deploy
 
 Bun reserves `deploy` as a built-in subcommand, so the `run` keyword is required.
 
-This typechecks the app, builds `dist/` with root asset paths (`--base /`), and publishes it to the `foil` project's `main` production branch at [foil-47v.pages.dev](https://foil-47v.pages.dev/).
+This uses Turbo to typecheck and build only `@foil/web` into `apps/web/dist/` with root asset paths (`--base /`), then publishes it to the `foil` project's `main` production branch at [foil-47v.pages.dev](https://foil-47v.pages.dev/). The upload runs outside Turbo's cache and environment filtering.
 
-`bun run build` produces a fully static `dist/` for a static web host such as GitHub Pages, Netlify or S3. Use **Share → Export HTML** to send a single document that opens directly as a local file.
+`bun run build` produces a fully static `apps/web/dist/` with `/foil/` asset paths for the GitHub Pages backup; its workflow uploads this directory. For a host serving at `/`, use `bunx --no-install turbo run build --filter=@foil/web -- --base /` and the same output directory. If configuring [Cloudflare Pages Git integration](https://developers.cloudflare.com/pages/configuration/monorepos/), keep the repository root as the build root, use this root-path build command, and set the output directory to `apps/web/dist`.
+
+Use **Share → Export HTML** to send a single document that opens directly as a local file.

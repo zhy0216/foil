@@ -1,5 +1,5 @@
 name: Verify Foil
-description: Install the pinned toolchain, audit dependencies, and check the static app.
+description: Install the pinned toolchain, audit dependencies, and check the workspace.
 
 runs:
   using: composite
@@ -32,10 +32,10 @@ runs:
         npm_config_registry: https://registry.npmjs.org
 
     - name: Install Chromium and WebKit
-      run: ./node_modules/.bin/playwright install --with-deps chromium webkit
+      run: bun run test:e2e:install --with-deps
       shell: bash
 
-    # test:e2e builds dist before starting the CSP-protected static preview.
+    # Turbo builds apps/web/dist before starting the CSP-protected static preview.
     - name: Build and run browser smoke tests
       run: bun run test:e2e
       shell: bash
@@ -46,7 +46,7 @@ runs:
       with:
         name: playwright-results
         path: |
-          playwright-report/
-          test-results/
+          apps/web/playwright-report/
+          apps/web/test-results/
         if-no-files-found: ignore
         retention-days: 7

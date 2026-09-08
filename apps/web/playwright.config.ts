@@ -24,7 +24,7 @@ export default defineConfig({
     { name: 'webkit', use: { ...devices['Desktop Safari'] } },
   ],
   webServer: {
-    command: `./node_modules/.bin/vite preview --base ${basePath} --host 127.0.0.1 --port ${port} --strictPort`,
+    command: `bun run preview --base ${basePath} --host 127.0.0.1 --port ${port} --strictPort`,
     url: baseURL,
     reuseExistingServer: false,
     timeout: 30_000,
