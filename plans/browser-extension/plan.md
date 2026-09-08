@@ -136,3 +136,60 @@ Acceptance matrix:
 - Packaged extension CSP and actual download/clipboard behavior need browser verification; an HTTP dev preview cannot establish them. Time capsules require the existing four drand hosts, but plain/password editing and export must not contact them.
 - The extension package adds browser tests to a CI workflow currently capped at 15 minutes. Use focused coverage and modest workers; adjust timeout only with observed need and preserve sequential KDF/build scheduling.
 - No publication credentials or store metadata are needed to complete the requested local implementation and package. Store submission is outside this execution queue.
+
+
+## 执行结果
+
+Completed only this queue in dependency order **01 → 02 → 03 → 04**, from clean `main` at `a52c75a7b3a98909e4850ab54e7267bdd295456d`. The accepted working assumption remained the Chrome/Edge Manifest V3 toolbar action opening the full packaged editor in a new tab; no alternative choice arrived. Each implementation used one isolated Herdr worktree, one task commit, review, a rebase performed by the same task session, independent coordinator validation, and local fast-forward integration. No rebase conflicts occurred. Implementation HEAD is `6573c179c2da6a3039517629ae521d48a40f3688`; a separate documentation commit records this execution result.
+
+### Integrated tasks and routing
+
+Saved `default_agent: codex`, each todo’s `agent: inherit` and original difficulty remain intact. All agents were launched through Herdr with explicit `--dangerously-bypass-approvals-and-sandbox`, `--model gpt-6-astra` and the resolved reasoning setting. The coordinator’s `high` was never a task override.
+
+| Todo / archived file | Integrated commit | Actual agent / model / reasoning | Independent coordinator acceptance |
+| --- | --- | --- | --- |
+| [01-shared-editor.md](todos/done/01-shared-editor.md) · hard | `86d6aaa18b2525a7ab0f147d4ddb1a6fe30ee460` | Codex / gpt-6-astra / max | Frozen install, typecheck, 631 units, website build and 28 Chromium/WebKit browser cases passed. |
+| [02-extension-package.md](todos/done/02-extension-package.md) · hard | `ed3294d4305d89582be9133bc09c4b1434706586` | Codex / gpt-6-astra / max | Frozen install, typecheck, 683 units, both builds, package checks and 13 installed Chromium smoke checks passed. |
+| [03-share-link-import.md](todos/done/03-share-link-import.md) · medium | `7b195b6c99688c744b5cce21b40e412b3ec92cb1` | Codex / gpt-6-astra / xhigh | Frozen install, typecheck, 870 units, both builds and 10 installed import checks passed. |
+| [04-extension-regressions.md](todos/done/04-extension-regressions.md) · hard | `6573c179c2da6a3039517629ae521d48a40f3688` | Codex / gpt-6-astra / max | Frozen install, typecheck, 876 units, both builds, 55 browser cases, both audits and the package command passed. |
+
+All four todo files are archived under `todos/done/`, and the queue records each task as integrated and cleaned. The shared package maintains the website and standalone reader, while extension APIs stay in `apps/extension`. The installed tests exposed and fixed a password-cancellation race: an old asynchronous unlock result can no longer replace the local editor after cancellation or a newer attempt. Four focused units and a real-AES browser regression cover the correction. All 619 original units remain covered; existing website/file test assertions were preserved.
+
+### Final validation
+
+Every final command selected `PATH=/home/ubuntu/.nvm/versions/node/v22.22.3/bin:$PATH`: **Node v22.22.3 / Bun 1.4.2**. Units completed before builds/browsers. The coordinator used a new worktree-local Turbo cache (`.turbo/coordinator-final-cache`) so typecheck, units and initial builds ran uncached. The task’s post-rebase checks also ran uncached. No skip or retry was used in the final local browser runs.
+
+| Coordinator command, sequentially in the rebased task worktree | Actual result |
+| --- | --- |
+| `bun install --frozen-lockfile` | Passed, 176 installs across 227 packages checked, no changes; 0.01 s. |
+| `bun run typecheck` | 3/3 tasks passed, uncached; 7.99 s. |
+| `bun run test` | **876/876**: 635 shared tests in 19 files + 241 extension tests in five files; 25.79 s. |
+| `bun run build` | Both production apps passed, uncached; 7.46 s. |
+| `FOIL_E2E_PORT=4491 FOIL_EXTENSION_E2E_PORT=4492 bun run test:e2e` | **55/55**: 28 website cases + 27 extension/file cases (19 installed Chromium, four Chromium files, four WebKit files); 96.54 s. |
+| `npm_config_registry=https://registry.npmjs.org bun audit` | No vulnerabilities among 221 packages; 0.09 s. |
+| `npm_config_registry=https://registry.npmjs.org bun audit --prod` | No vulnerabilities among 37 packages; 0.06 s. |
+| `bun run --cwd apps/extension package` | Build/check/ZIP passed, 12 runtime files; 7.43 s. |
+
+The task agent additionally passed browser/dependency installation, the full default **55/55** matrix, the separate website `/` build and **28/28** Chromium/WebKit cases, and a configured `/foil/` public share-host run with **5/5** cases covering all four outgoing modes and password HTML delivery/re-export. Exact commands, timings, preliminary failures and their fixes are in the [04 archive](todos/done/04-extension-regressions.md). The `/foil/` default website and default public share destination were restored after variants. Cleanup failure probes and Turbo source/helper/environment invalidation checks passed.
+
+After integration, the coordinator again ran frozen install, root build and the extension package command in the original checkout, all successfully, and verified every ZIP entry byte-for-byte against the final dist. Both hosts’ standalone resources are identical. Known React act/deprecation warnings and Playwright color/server-shutdown diagnostics remain documented; no final functional failure, unexpected HTTP(S), page error or CSP violation was hidden. Dependency versions were not upgraded by task 04.
+
+Automated browsers: **Chromium 153.0.8010.12** for the installed extension; **Chromium and WebKit 26.6** for website and actual `file://` recipients. The toolbar evidence combines listener units with the actual compiled handler invoked through DevTools and real Chrome APIs. **Native toolbar clicking and manual branded Chrome/Edge installation were not performed.** Remote CI was not run; its commands and artifact wiring were validated locally.
+
+### Final local artifacts
+
+These paths are in the original checkout and survive task-worktree cleanup:
+
+- Unpacked extension: `/home/ubuntu/workspace/foil/apps/extension/dist/` — **12 runtime files**, **916,640 uncompressed bytes**. Load this directory through Chrome/Edge Developer mode → Load unpacked.
+- ZIP: `/home/ubuntu/workspace/foil/apps/extension/artifacts/foil-extension-0.1.0.zip` — **315,783 bytes**, manifest at archive root; SHA-256 **`b48f479a75b84716fe5b9652c1626cf556397153c402029b7631bc65ba5731d0`**. Its contents exactly match the tested and rebuilt dist.
+- Website: `/home/ubuntu/workspace/foil/apps/web/dist/` — restored default `/foil/` asset base. Pages upload configuration remains limited to this directory.
+- Shared standalone resource SHA-256: `7dbac5572e21a800c27be97e947740d87a280a75205efe11ac6fc5882c458173`.
+- Preserved ignored review evidence: `/home/ubuntu/workspace/foil/apps/extension/artifacts/validation/`. Its README indexes the task’s default/root/configured-share reports and downloads; `coordinator/` contains the independent default reports and `/tmp/foil-coordinator-04-*.log` copies; `final-artifacts.json` records the final byte/hash verification. Earlier task logs remain at `/tmp/foil-coordinator-01-*`, `02-*` and `03-*`; final checkout build logs are `/tmp/foil-final-{install,build,package}.log`.
+
+### Cleanup and remaining scope
+
+All four recorded task workspaces (`w1V`, `w1X`, `w1Y`, `w1Z`), their four worktrees and `herdr/plan-browser-extension-*` branches were removed after safe integration. `git worktree list` now contains only the original Foil checkout. No recorded task resource is retained. Recovery counts were **01: 0, 02: 1, 03: 1, 04: 1**: tasks 02/03 dismissed post-completion model-switch advisories while retaining the required model/effort; task 04 resumed its exact session (`01a0816e-0be1-7462-9c95-3ffb0469de38`) after its original process/pane exited, retaining Codex/max and completing rebase/checks. No model downgrade occurred.
+
+Herdr workspace **`w10`** has a label referring to task 04 but was absent from the coordinator’s creation records. The task’s original session action record contains no Herdr commands or w10 creation. Its creator is unverified; it was left untouched under the skill’s ownership rule. It retains no registered Foil Git worktree or task branch. Unrelated workspaces/plans were not operated on.
+
+No functional blocker or deferred queue task remains. Manual branded-browser/native-toolbar verification is the stated coverage limitation. Store publishing, deployment, remote CI execution, PR creation and push were outside scope and were not performed. Final tracked checkout state is clean after the execution-record commit; generated dist/ZIP/reports remain ignored local artifacts.
