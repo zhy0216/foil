@@ -2,6 +2,8 @@
 
 A markdown editor that lives entirely in your browser. Type, format, share by copying a link.
 
+Open Foil on [Cloudflare Pages](https://foil-47v.pages.dev/). If that site is unavailable, use the [GitHub Pages backup](https://zhy0216.github.io/foil/).
+
 ## Privacy
 
 **There is no backend. There is no database. Nothing you write leaves your device.**
@@ -77,5 +79,15 @@ bun run test      # vitest (url-codec, markdown)
 Stack: React 18 + TypeScript + Vite. The only runtime dependency beyond React is `tlock-js` (with `drand-client`) for time capsules, dynamically imported so it stays out of the main bundle until you seal or open one.
 
 ## Deploy
+
+With Wrangler installed and logged into the Cloudflare account that owns the `foil` Pages project (`wrangler login`), run:
+
+```bash
+bun run deploy
+```
+
+Bun reserves `deploy` as a built-in subcommand, so the `run` keyword is required.
+
+This typechecks the app, builds `dist/` with root asset paths (`--base /`), and publishes it to the `foil` project's `main` production branch at [foil-47v.pages.dev](https://foil-47v.pages.dev/).
 
 `bun run build` produces a fully static `dist/`. Drop it on any static host (GitHub Pages, Netlify, S3, a USB stick). There is nothing else to run.

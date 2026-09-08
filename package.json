@@ -11,6 +11,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "deploy": "bun run build --base / && wrangler pages deploy dist --project-name foil --branch main",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
