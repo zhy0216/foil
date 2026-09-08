@@ -41,6 +41,12 @@ VITE_FOIL_SHARE_BASE_URL=https://zhy0216.github.io/foil/ bun run --cwd apps/exte
 
 Local editing, ordinary/password links and their HTML exports work offline. Time capsules need drand's verified chain information/signatures. The extension keeps Foil's existing page-local `localStorage` documents/settings and per-tab `sessionStorage` binding. Its origin has a separate library from the website, with no automatic migration or sync. Clearing extension data, removing the extension, or losing the profile can lose documents; retain exported copies when needed. Existing storage error handling remains in the shared editor. Clipboard copying uses a user click and the existing manual-copy fallback on denial; HTML downloads use the existing Blob link.
 
+## Open a shared link
+
+Select **Open shared link** in the editor or read-only header. Paste a complete HTTP(S) Foil URL, or its `#d=`, `#e=`, `#td=` or `#te=` fragment, then select **Open in new tab**. Foil checks the pasted format locally and opens the packaged preview in a new extension tab, leaving your current draft intact. It never visits the supplied website or reads your clipboard automatically. Links allow a website address of up to 2,048 characters plus the existing 256 KiB fragment budget; malformed or oversized input stays in the dialog with an error.
+
+The new tab strips the fragment from its address bar and uses the existing password/time gates. Reading a snapshot does not add it to the library: select **Edit anyway** to save a local copy with its title, Markdown and comments. **Cancel** or Escape dismisses the paste dialog and returns focus to its button. If opening a tab fails, the dialog retains your input for retry.
+
 ## Manifest policy
 
 Scripts run only from the local package (`script-src 'self'`); objects are disabled. Existing inline presentation styles, local/data images and local fonts are allowed. `connect-src` allows self (the packaged HTML resource) and exactly these host grants:

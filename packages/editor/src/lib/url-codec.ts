@@ -161,6 +161,12 @@ export function validateHtmlPayload(payload: unknown): asserts payload is string
   inspectPayload(payload, 'html');
 }
 
+/** Validate URL transport framing and bounds without decoding or crypto.
+ *  Like decodeUrl, accepts the historical omitted leading # convention. */
+export function validateUrlPayload(payload: unknown): asserts payload is string {
+  inspectPayload(payload, 'url');
+}
+
 async function readBounded(stream: ReadableStream<Uint8Array>, budget?: DecodeBudget): Promise<Uint8Array> {
   const reader = stream.getReader();
   const chunks: Uint8Array[] = [];

@@ -1,0 +1,30 @@
+.open-shared-link {
+  margin: auto;
+  color: var(--fg);
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+}
+.open-shared-link::backdrop { background: hsla(225, 9%, 4%, .55); }
+.open-shared-link textarea {
+  display: block;
+  width: 100%;
+  resize: vertical;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-raised);
+  color: var(--fg);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+.open-shared-link textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.open-shared-link-hint, .open-shared-link-error {
+  margin: 8px 0 0;
+  font-size: var(--text-xs);
+}
+.open-shared-link-hint { color: var(--fg-muted); }
+.open-shared-link-error { color: var(--fg); }

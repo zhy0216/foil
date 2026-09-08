@@ -2,7 +2,7 @@
 
 Plan: [../plan.md](../plan.md). Deliver `apps/extension` as a packaged Chrome/Edge Manifest V3 editor sharing the existing Foil runtime, with public website links, HTML export, explicit share-link import, and installed-package browser tests.
 
-Status: 01 is merged and cleaned at `86d6aaa18b2525a7ab0f147d4ddb1a6fe30ee460`; 02 is complete in its isolated task branch and awaits explicit coordinator integration; 03–04 are pending. Product: a Chrome/Edge MV3 toolbar button opens the full editor in a new tab. Honor any later user correction before starting dependent work.
+Status: 01 is merged and cleaned at `86d6aaa18b2525a7ab0f147d4ddb1a6fe30ee460`; 02 is merged and cleaned at `ed3294d4305d89582be9133bc09c4b1434706586`; 03 is complete in its isolated task branch and awaits explicit coordinator integration; 04 is pending. Product: a Chrome/Edge MV3 toolbar button opens the full editor in a new tab. Honor any later user correction before starting dependent work.
 
 ## Execution preferences
 
@@ -17,8 +17,8 @@ Coordinator: `codex` / `gpt-6-astra` / `high`. Task mapping: hard → `gpt-6-ast
 | File | Status | Priority | Difficulty | Agent | Model / Codex reasoning | Description |
 | --- | --- | --- | --- | --- | --- | --- |
 | [01-shared-editor.md](done/01-shared-editor.md) | Merged and cleaned (`86d6aaa`) | P1 | hard | codex, inherited default | gpt-6-astra / max | Extract the existing application and standalone builder into a shared workspace package with a small host boundary |
-| [02-extension-package.md](done/02-extension-package.md) | Complete; awaiting integration | P1 | hard | codex, inherited default | gpt-6-astra / max | Package the real Manifest V3 editor, action worker, local assets, share-base configuration, icons and ZIP command |
-| [03-share-link-import.md](03-share-link-import.md) | Pending | P1 | medium | codex, inherited default | gpt-6-astra / xhigh | Accept a deliberately pasted share link and open the existing read-only/protected/fork workflow in a new extension tab |
+| [02-extension-package.md](done/02-extension-package.md) | Merged and cleaned (`ed3294d`) | P1 | hard | codex, inherited default | gpt-6-astra / max | Package the real Manifest V3 editor, action worker, local assets, share-base configuration, icons and ZIP command |
+| [03-share-link-import.md](done/03-share-link-import.md) | Complete; awaiting integration | P1 | medium | codex, inherited default | gpt-6-astra / xhigh | Accept a deliberately pasted share link and open the existing read-only/protected/fork workflow in a new extension tab |
 | [04-extension-regressions.md](04-extension-regressions.md) | Pending | P1 | hard | codex, inherited default | gpt-6-astra / max | Exercise the installed package, cross-host sharing and files; wire CI and document build/install/privacy behavior |
 
 ## 文件
@@ -29,11 +29,11 @@ Coordinator: `codex` / `gpt-6-astra` / `high`. Task mapping: hard → `gpt-6-ast
 
 2. [02-extension-package.md](done/02-extension-package.md)
 
-   Completed locally; see its archived acceptance, artifact paths, browser limitations and API handoff. Depends on merged `01-shared-editor.md`. Owns `apps/extension` scaffolding, manifest/build/worker/entry/config, icons, package validation and ZIP generation, plus required root task/ignore/lockfile changes.
+   Merged and cleaned at `ed3294d`; see its archived acceptance, artifact paths, browser limitations and API handoff. Depends on merged `01-shared-editor.md`. Owns `apps/extension` scaffolding, manifest/build/worker/entry/config, icons, package validation and ZIP generation, plus required root task/ignore/lockfile changes.
 
-3. [03-share-link-import.md](03-share-link-import.md)
+3. [03-share-link-import.md](done/03-share-link-import.md)
 
-   Depends on `02-extension-package.md` (and 01 transitively). Owns the extension import parser/dialog and its mounting through the shared host action slot. Keep browser-specific logic in the extension.
+   Completed locally; see its archived parser/API contract, acceptance evidence and exact installed smoke selectors/artifacts for 04. Depends on integrated `02-extension-package.md` (and 01 transitively). Owns the extension import parser/dialog and its mounting through the shared host action slot. Keep browser-specific logic in the extension.
 
 4. [04-extension-regressions.md](04-extension-regressions.md)
 
@@ -51,6 +51,7 @@ Execution: `01 → 02 → 03 → 04`. No safe parallel tasks in this queue: sour
 - Website and extension use separate origin-local libraries; retain existing synchronous Web Storage for page data. No worker storage, content scripts, browser sync, broad host grants, or automatic website-data migration.
 - Manifest host grants are limited to the four existing drand HTTPS hosts. Keep locally bundled scripts under strict extension CSP and preserve the existing website/file policies.
 - Merged 01 baseline is 631 passing unit tests (619 original + 12 host/resource tests). Task 02 validates all 631 plus 52 extension tests: 683 total. Planning recorded React act warnings and shell Node 24.20.0; tasks 01/02 used pinned Node 22.22.3/Bun 1.4.2. Keep that toolchain for later checks.
+- Completed 03 adds 187 parser/component cases: **870 total** (631 shared + 239 extension) and **10/10 targeted installed import checks** in bundled Chromium 153.0.8010.12. Its archive documents the pure `parseShareLink` helper, two narrow shared exports, native modal behavior, fixed new-tab destination and the full browser work retained by 04.
 
 ## Validation and completion
 
