@@ -14,7 +14,7 @@ default_agent: codex
 
 | 文件 | 优先级 | 难度 | agent | 模型 / Codex 推理强度 | 说明 |
 | --- | --- | --- | --- | --- | --- |
-| [01-html-payload.md](01-html-payload.md) | P1 | hard | codex，继承默认 | gpt-6-astra / max | 共用四种密码学模式，增加有界文件 payload 和版本格式 |
+| [01-html-payload.md](done/01-html-payload.md) | P1 | hard | codex，继承默认 | gpt-6-astra / max | 已完成，待集成：共用四种密码学模式，有界文件 payload 和版本格式；验收/API 见完成记录 |
 | [02-readonly-preview.md](02-readonly-preview.md) | P1 | hard | codex，继承默认 | gpt-6-astra / max | 网站/文件共用预览，保留评论与设置，移除文件编辑依赖 |
 | [03-standalone-html.md](03-standalone-html.md) | P1 | hard | codex，继承默认 | gpt-6-astra / max | 独立阅读入口、全部资源内嵌、文件 CSP 与导出组装 |
 | [04-share-export.md](04-share-export.md) | P1 | medium | codex，继承默认 | gpt-6-astra / xhigh | Share 下载 HTML，保护选项/快照一致，文件可再次分享 |
@@ -22,9 +22,9 @@ default_agent: codex
 
 ## 文件
 
-1. `01-html-payload.md`
+1. [done/01-html-payload.md](done/01-html-payload.md)
 
-   依赖：无。可与 02 并行；只拥有 codec、文件格式及其测试。
+   已完成，待协调器集成。依赖：无。可与 02 并行；只拥有 codec、文件格式及其测试。完成记录提供 03/04 所需的真实 API、限制、错误语义和验证结果。
 
 2. `02-readonly-preview.md`
 

@@ -1,4 +1,4 @@
-/* URL packing.
+/* URL and HTML-file payload packing.
 
    Four schemes:
      #d=  plain         — gzipped DocState JSON, base64url
@@ -41,7 +41,22 @@ const IV_BYTES = 12;
 const TAG_BYTES = 16;
 const AES_OVERHEAD = SALT_BYTES + IV_BYTES + TAG_BYTES;
 
+// Longest scheme + padded base64 of a full layer with salt, IV and GCM tag.
+// This is only a transport ceiling; layer and cumulative budgets still apply.
+export const HTML_PAYLOAD_MAX_CHARS = '#te='.length + Math.ceil((SHARE_LIMITS.layerBytes + AES_OVERHEAD) / 3) * 4;
+
+type ShareTransport = 'url' | 'html';
+type ShareScheme = 'd' | 'e' | 'td' | 'te';
+
 class ShareCodecError extends Error {}
+
+function checkTransportSize(size: number, transport: ShareTransport) {
+  if (size > (transport === 'url' ? SHARE_LIMITS.fragmentChars : HTML_PAYLOAD_MAX_CHARS)) {
+    throw new ShareCodecError(transport === 'url'
+      ? 'Share link exceeds the 256 KiB limit'
+      : 'HTML share payload exceeds the character limit');
+  }
+}
 
 function checkLayerSize(size: number) {
   if (size > SHARE_LIMITS.layerBytes) throw new ShareCodecError('Share data exceeds the 4 MiB limit');
@@ -78,11 +93,12 @@ function textBytes(text: string): Uint8Array {
 function bytesToB64u(bytes: Uint8Array): string {
   if (typeof btoa !== 'function') throw new ShareCodecError('Base64 encoding is not supported in this browser');
   let s = '';
-  for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
+  // Files can carry MiB-sized layers; avoid a separate string node per byte.
+  for (let i = 0; i < bytes.length; i += 8192) s += String.fromCharCode(...bytes.subarray(i, i + 8192));
   return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
-function b64uToBytes(b64u: string): Uint8Array {
+function inspectBase64(b64u: string) {
   // Accept canonical URL-safe base64 with optional correct padding (legacy).
   // Do this even before returning a password prompt, and before any KDF work.
   if (!/^[A-Za-z0-9_-]+={0,2}$/.test(b64u)) throw new ShareCodecError('Invalid share encoding');
@@ -97,11 +113,52 @@ function b64uToBytes(b64u: string): Uint8Array {
   if ((remainder === 2 && (tail & 15) !== 0) || (remainder === 3 && (tail & 3) !== 0)) {
     throw new ShareCodecError('Invalid share encoding');
   }
+  return { unpadded, padding, byteLength: Math.floor(unpadded.length * 3 / 4) };
+}
+
+function b64uToBytes({ unpadded, padding }: ReturnType<typeof inspectBase64>): Uint8Array {
   if (typeof atob !== 'function') throw new ShareCodecError('Base64 decoding is not supported in this browser');
   const s = atob((unpadded + '='.repeat(padding)).replace(/-/g, '+').replace(/_/g, '/'));
   const out = new Uint8Array(s.length);
   for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i);
   return out;
+}
+
+/** Inspect the transport without allocating decoded bytes or invoking crypto. */
+function inspectPayload(payload: unknown, transport: ShareTransport) {
+  if (typeof payload !== 'string' || payload === '' || payload === '#') {
+    throw new ShareCodecError(transport === 'url' ? 'Could not read share link' : 'Invalid HTML share payload');
+  }
+  const hasHash = payload.startsWith('#');
+  checkTransportSize(payload.length + (hasHash ? 0 : 1), transport);
+  // File data always carries an explicit prefix. The URL entry retains its
+  // historical tolerance for callers that already removed the leading #.
+  const cleaned = hasHash ? payload.slice(1) : payload;
+  const eq = cleaned.indexOf('=');
+  const scheme = cleaned.slice(0, eq) as ShareScheme;
+  if ((transport === 'html' && !hasHash) || eq <= 0 || !['d', 'e', 'td', 'te'].includes(scheme)) {
+    throw new ShareCodecError('Unsupported share scheme');
+  }
+  const data = inspectBase64(cleaned.slice(eq + 1));
+  const encrypted = scheme === 'e' || scheme === 'te';
+  if (encrypted && data.byteLength <= AES_OVERHEAD) {
+    throw new ShareCodecError('Invalid encrypted share data');
+  }
+  checkLayerSize(data.byteLength - (encrypted ? AES_OVERHEAD : 0));
+  if (encrypted) {
+    // GCM's plaintext length is known before decryption. Reject a pair of
+    // layers that already exceeds the budget before prompting or PBKDF2.
+    const budget = new DecodeBudget();
+    budget.consume(data.byteLength);
+    budget.consume(data.byteLength - AES_OVERHEAD);
+  }
+  return { scheme, encrypted, data };
+}
+
+/** Validate file transport framing and bounds only, without decoding its data.
+ *  Gzip, document/envelope schema and authentication are checked on decode/open. */
+export function validateHtmlPayload(payload: unknown): asserts payload is string {
+  inspectPayload(payload, 'html');
 }
 
 async function readBounded(stream: ReadableStream<Uint8Array>, budget?: DecodeBudget): Promise<Uint8Array> {
@@ -317,12 +374,10 @@ function futureRound(unlockMs: unknown): number {
   return round;
 }
 
-async function pack(scheme: 'd' | 'e' | 'td' | 'te', compressed: Uint8Array, jsonSize: number, password?: string | null): Promise<string> {
+async function pack(scheme: ShareScheme, compressed: Uint8Array, jsonSize: number, transport: ShareTransport, password?: string | null): Promise<string> {
   const wireSize = compressed.length + (password ? AES_OVERHEAD : 0);
   const prefix = '#' + scheme + '=';
-  if (prefix.length + Math.ceil(wireSize * 4 / 3) > SHARE_LIMITS.fragmentChars) {
-    throw new ShareCodecError('Share link exceeds the 256 KiB limit');
-  }
+  checkTransportSize(prefix.length + Math.ceil(wireSize * 4 / 3), transport);
   // Mirror the receiving path before paying for PBKDF2.
   const budget = new DecodeBudget();
   if (password) budget.consume(wireSize);
@@ -332,10 +387,15 @@ async function pack(scheme: 'd' | 'e' | 'td' | 'te', compressed: Uint8Array, jso
   return prefix + bytesToB64u(payload);
 }
 
-/** Build a shareable URL hash. */
-export async function encodeUrl(
+export interface ShareOptions {
+  password?: string | null;
+  unlockMs?: number | null;
+}
+
+async function encodeShare(
   state: DocState,
-  opts: { password?: string | null; unlockMs?: number | null } = {}
+  opts: ShareOptions,
+  transport: ShareTransport,
 ): Promise<string> {
   try {
     const { password, unlockMs } = opts;
@@ -358,14 +418,24 @@ export async function encodeUrl(
       openBudget.consume(envJson.length);
       openBudget.consume(compressed.length);
       openBudget.consume(json.length);
-      const hash = await pack(password ? 'te' : 'td', await gzip(envJson), envJson.length, password);
+      const hash = await pack(password ? 'te' : 'td', await gzip(envJson), envJson.length, transport, password);
       futureRound(unlockMs); // The requested date may expire during async work.
       return hash;
     }
-    return await pack(password ? 'e' : 'd', compressed, json.length, password);
+    return await pack(password ? 'e' : 'd', compressed, json.length, transport, password);
   } catch (error) {
-    throw safeError(error, 'Could not build share link');
+    throw safeError(error, transport === 'url' ? 'Could not build share link' : 'Could not build HTML share payload');
   }
+}
+
+/** Build a shareable URL hash, retaining the 256 KiB URL transport limit. */
+export async function encodeUrl(state: DocState, opts: ShareOptions = {}): Promise<string> {
+  return encodeShare(state, opts, 'url');
+}
+
+/** Build a prefixed payload for an HTML file using the fixed file budget. */
+export async function encodeHtmlPayload(state: DocState, opts: ShareOptions = {}): Promise<string> {
+  return encodeShare(state, opts, 'html');
 }
 
 export interface DecodeResult {
@@ -375,22 +445,12 @@ export interface DecodeResult {
   error?: string;
 }
 
-export async function decodeUrl(hash: string, password?: string): Promise<DecodeResult> {
-  if (hash === '' || hash === '#') return {};
+async function decodeShare(payload: string, password: string | undefined, transport: ShareTransport): Promise<DecodeResult> {
   try {
-    if (hash.length + (hash.startsWith('#') ? 0 : 1) > SHARE_LIMITS.fragmentChars) {
-      throw new ShareCodecError('Share link exceeds the 256 KiB limit');
-    }
-    const cleaned = hash.startsWith('#') ? hash.slice(1) : hash;
-    const eq = cleaned.indexOf('=');
-    const scheme = cleaned.slice(0, eq);
-    if (eq <= 0 || !['d', 'e', 'td', 'te'].includes(scheme)) {
-      throw new ShareCodecError('Unsupported share scheme');
-    }
-    let bytes = b64uToBytes(cleaned.slice(eq + 1));
+    const { scheme, encrypted, data } = inspectPayload(payload, transport);
+    let bytes = b64uToBytes(data);
     const budget = new DecodeBudget();
-    if (scheme === 'e' || scheme === 'te') {
-      if (bytes.length <= AES_OVERHEAD) throw new ShareCodecError('Invalid encrypted share data');
+    if (encrypted) {
       if (!password) return { encrypted: scheme === 'e' ? 'password' : 'time-password' };
       budget.consume(bytes.length);
       bytes = await decryptBytes(bytes, password);
@@ -402,12 +462,22 @@ export async function decodeUrl(hash: string, password?: string): Promise<Decode
     }
     return { state: parseDocState(value, SHARE_LIMITS) };
   } catch (error) {
-    return { error: safeError(error, 'Could not read share link').message };
+    return { error: safeError(error, transport === 'url' ? 'Could not read share link' : 'Could not read HTML share payload').message };
   }
 }
 
+export async function decodeUrl(hash: string, password?: string): Promise<DecodeResult> {
+  if (hash === '' || hash === '#') return {};
+  return decodeShare(hash, password, 'url');
+}
+
+/** Decode file data; empty input is an error, never an absent document. */
+export async function decodeHtmlPayload(payload: string, password?: string): Promise<DecodeResult> {
+  return decodeShare(payload, password, 'html');
+}
+
 /** Decrypt a time-capsule envelope's payload after the unlock round has published.
- *  For #te= links the outer AES (password) layer is already peeled by `decodeUrl`
+ *  For #te= the outer AES layer is already peeled by decodeUrl/decodeHtmlPayload
  *  before we get here, so the envelope's payload is plain tlock-over-gzip. */
 export async function openTimeCapsule(env: TimeCapsuleEnvelope): Promise<DocState> {
   try {

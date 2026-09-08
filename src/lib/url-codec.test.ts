@@ -3,7 +3,10 @@
 // lacks `.stream()`, so url-codec's gzip path needs the node env to work.
 import { Buffer } from 'buffer';
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
-import { encodeUrl, decodeUrl, openTimeCapsule, SHARE_LIMITS, type TimeCapsuleEnvelope } from './url-codec';
+import {
+  encodeUrl, decodeUrl, encodeHtmlPayload, decodeHtmlPayload, validateHtmlPayload,
+  openTimeCapsule, SHARE_LIMITS, HTML_PAYLOAD_MAX_CHARS, type TimeCapsuleEnvelope,
+} from './url-codec';
 import { timelockEncrypt, timelockDecrypt, roundAtUnix, unixMsAtRound, NotYetReadyError, NoEndpointError } from './timecapsule';
 import type { DocState } from '../types';
 
@@ -44,11 +47,7 @@ async function gzipFixture(input: Uint8Array): Promise<Uint8Array> {
 }
 
 const bytes = (value: unknown) => utf8.encode(JSON.stringify(value));
-const b64u = (value: Uint8Array) => {
-  let binary = '';
-  for (const byte of value) binary += String.fromCharCode(byte);
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-};
+const b64u = (value: Uint8Array) => Buffer.from(value).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 const fromB64u = (value: string) => new Uint8Array(Buffer.from(value.replace(/-/g, '+').replace(/_/g, '/'), 'base64'));
 const armor = (body: string) => `-----BEGIN AGE ENCRYPTED FILE-----\n${body}\n-----END AGE ENCRYPTED FILE-----\n`;
 const options = (scheme: Scheme) => ({
@@ -73,7 +72,11 @@ async function encryptFixture(plaintext: Uint8Array): Promise<Uint8Array> {
       key, { name: 'AES-GCM', length: 256 }, false, ['encrypt']
     ));
   const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, await fixtureKey, plaintext as BufferSource);
-  return new Uint8Array([...salt, ...iv, ...new Uint8Array(ct)]);
+  const out = new Uint8Array(salt.length + iv.length + ct.byteLength);
+  out.set(salt);
+  out.set(iv, salt.length);
+  out.set(new Uint8Array(ct), salt.length + iv.length);
+  return out;
 }
 
 async function wire(scheme: Scheme, payload: Uint8Array): Promise<string> {
@@ -90,8 +93,8 @@ async function documentLink(scheme: Scheme, json: Uint8Array, raw = false): Prom
   return wire(scheme, payload);
 }
 
-async function readDocument(hash: string, pw = password): Promise<DocState | undefined> {
-  const result = await decodeUrl(hash, pw);
+async function readDocument(hash: string, pw = password, decode = decodeUrl): Promise<DocState | undefined> {
+  const result = await decode(hash, pw);
   if (result.error) throw new Error(result.error);
   return result.timeCapsule ? openTimeCapsule(result.timeCapsule) : result.state;
 }
@@ -116,6 +119,19 @@ function commented(threads: number, replies: number): DocState {
       })),
     })),
   };
+}
+
+function noisyDocument(noiseBytes = 256 * 1024): DocState {
+  // Deterministic, poorly compressible data for transport and cumulative limits.
+  const noise = new Uint8Array(noiseBytes);
+  let seed = 123456789;
+  for (let i = 0; i < noise.length; i++) {
+    seed ^= seed << 13;
+    seed ^= seed >>> 17;
+    seed ^= seed << 5;
+    noise[i] = seed & 255;
+  }
+  return { ...rich, md: Buffer.from(noise).toString('base64') };
 }
 
 beforeEach(() => {
@@ -445,16 +461,7 @@ describe('bounded decoding and encoding', () => {
   });
 
   it.each(schemes)('rejects a generated #%s= fragment beyond its limit before password derivation', async (scheme) => {
-    // Deterministic, poorly compressible data; under 400 KiB, never GB-scale.
-    const noise = new Uint8Array(256 * 1024);
-    let seed = 123456789;
-    for (let i = 0; i < noise.length; i++) {
-      seed ^= seed << 13;
-      seed ^= seed >>> 17;
-      seed ^= seed << 5;
-      noise[i] = seed & 255;
-    }
-    const doc = { ...sample, md: Buffer.from(noise).toString('base64') };
+    const doc = noisyDocument();
     const kdf = vi.spyOn(crypto.subtle, 'deriveKey');
     await expect(encodeUrl(doc, options(scheme))).rejects.toThrow('Share link exceeds the 256 KiB limit');
     expect(kdf).not.toHaveBeenCalled();
@@ -565,5 +572,224 @@ describe('explicit time-lock options never downgrade protection', () => {
       return armor(Buffer.from(payload as unknown as ArrayBuffer).toString('base64'));
     });
     await expect(encodeUrl(sample, options(scheme))).rejects.toThrow('Unlock time must be a valid future date');
+  });
+});
+
+describe('HTML payload transport', () => {
+  const read = (payload: string, pw = password) => readDocument(payload, pw, decodeHtmlPayload);
+
+  it.each(schemes)('round-trips #%s= files and shares wire compatibility with URLs', async (scheme) => {
+    const payload = await encodeHtmlPayload(rich, options(scheme));
+    expect(payload.startsWith(`#${scheme}=`)).toBe(true);
+    expect(() => validateHtmlPayload(payload)).not.toThrow();
+    expect(await read(payload)).toEqual(rich);
+    expect(await readDocument(payload)).toEqual(rich);
+    expect(await read(await encodeUrl(rich, options(scheme)))).toEqual(rich);
+    if (scheme === 'd' || scheme === 'e') {
+      expect(seal).not.toHaveBeenCalled();
+      expect(unseal).not.toHaveBeenCalled();
+    }
+  });
+
+  it.each(schemes)('round-trips #%s= files beyond 256 KiB while both URL directions keep rejecting them', async (scheme) => {
+    const doc = noisyDocument();
+    const payload = await encodeHtmlPayload(doc, options(scheme));
+    expect(payload.length).toBeGreaterThan(SHARE_LIMITS.fragmentChars);
+    expect(payload.length).toBeLessThan(HTML_PAYLOAD_MAX_CHARS);
+    expect(await read(payload)).toEqual(doc);
+    const kdf = vi.spyOn(crypto.subtle, 'deriveKey');
+    const allocate = vi.spyOn(globalThis, 'atob');
+    expect(await decodeUrl(payload, password)).toEqual({ error: 'Share link exceeds the 256 KiB limit' });
+    await expect(encodeUrl(doc, options(scheme))).rejects.toThrow('Share link exceeds the 256 KiB limit');
+    expect(kdf).not.toHaveBeenCalled();
+    expect(allocate).not.toHaveBeenCalled();
+  });
+
+  it.each(['e', 'te'] as const)('keeps the #%s= password outside all other layers and permits retries', async (scheme) => {
+    const payload = await encodeHtmlPayload(rich, options(scheme));
+    expect(await decodeHtmlPayload(payload)).toEqual({ encrypted: scheme === 'e' ? 'password' : 'time-password' });
+    expect(await decodeHtmlPayload(payload, 'wrong')).toEqual({ error: 'Incorrect password or damaged share link' });
+    expect(unseal).not.toHaveBeenCalled();
+    // Removing the visible encrypted scheme cannot expose JSON or an envelope.
+    const withoutPassword = payload.replace(`#${scheme}=`, scheme === 'e' ? '#d=' : '#td=');
+    expect(await decodeHtmlPayload(withoutPassword)).toEqual({ error: expect.any(String) });
+    const damaged = fromB64u(payload.slice(payload.indexOf('=') + 1));
+    damaged[damaged.length - 1] ^= 1;
+    expect(await decodeHtmlPayload(`#${scheme}=` + b64u(damaged), password)).toEqual({ error: 'Incorrect password or damaged share link' });
+    expect(await read(payload)).toEqual(rich);
+    if (scheme === 'te') {
+      const compressed = seal.mock.calls[0][0] as Uint8Array;
+      expect(Array.from(compressed.subarray(0, 2))).toEqual([0x1f, 0x8b]);
+      const plain = await new Response(new Blob([compressed as BlobPart]).stream().pipeThrough(new DecompressionStream('gzip'))).json();
+      expect(plain).toEqual(rich);
+    }
+  });
+
+  it.each(['td', 'te'] as const)('retains #%s= time/network errors and can retry the same envelope', async (scheme) => {
+    const payload = await encodeHtmlPayload(rich, options(scheme));
+    const decoded = await decodeHtmlPayload(payload, password);
+    expect(decoded.timeCapsule).toMatchObject({ v: 1, round, unlockMs: unixMsAtRound(round) });
+    expect(decoded.state).toBeUndefined();
+    unseal.mockRejectedValueOnce(new NotYetReadyError(round));
+    await expect(openTimeCapsule(decoded.timeCapsule!)).rejects.toThrow(NotYetReadyError);
+    unseal.mockRejectedValueOnce(new NoEndpointError());
+    await expect(openTimeCapsule(decoded.timeCapsule!)).rejects.toThrow(NoEndpointError);
+    await expect(openTimeCapsule(decoded.timeCapsule!)).resolves.toEqual(rich);
+  });
+
+  it.each(['td', 'te'] as const)('rejects invalid, past and expired #%s= dates without dropping protection', async (scheme) => {
+    vi.useFakeTimers();
+    vi.setSystemTime(targetMs);
+    const kdf = vi.spyOn(crypto.subtle, 'deriveKey');
+    const compress = vi.fn();
+    vi.stubGlobal('CompressionStream', class { constructor() { compress(); } });
+    for (const unlockMs of [undefined, null, NaN, Infinity, targetMs - 1, targetMs]) {
+      await expect(encodeHtmlPayload(rich, { ...options(scheme), unlockMs })).rejects.toThrow('Unlock time must be a valid future date');
+    }
+    expect(kdf).not.toHaveBeenCalled();
+    expect(seal).not.toHaveBeenCalled();
+    expect(compress).not.toHaveBeenCalled();
+    vi.stubGlobal('CompressionStream', NativeCompressionStream);
+    vi.setSystemTime(targetMs - 60_000);
+    seal.mockImplementationOnce(async payload => {
+      vi.setSystemTime(targetMs);
+      return armor(Buffer.from(payload as Uint8Array).toString('base64'));
+    });
+    await expect(encodeHtmlPayload(rich, options(scheme))).rejects.toThrow('Unlock time must be a valid future date');
+  });
+
+  it.each(schemes)('rejects oversized or malformed #%s= strings before byte allocation, KDF or gzip', async (scheme) => {
+    expect(HTML_PAYLOAD_MAX_CHARS).toBe(5_592_468);
+    const allocate = vi.spyOn(globalThis, 'atob');
+    const kdf = vi.spyOn(crypto.subtle, 'deriveKey');
+    const decompress = vi.fn();
+    vi.stubGlobal('DecompressionStream', class { constructor() { decompress(); } });
+    const oversized = `#${scheme}=` + 'A'.repeat(HTML_PAYLOAD_MAX_CHARS);
+    for (const pw of [undefined, password]) {
+      expect(await decodeHtmlPayload(oversized, pw)).toEqual({ error: 'HTML share payload exceeds the character limit' });
+      for (const data of ['', '!', 'A', 'AA A', 'Zg===', 'Zg=', 'Zh', 'Zm9', 'AA+A', 'AA/A', 'AA%20', '中文']) {
+        expect(await decodeHtmlPayload(`#${scheme}=${data}`, pw)).toEqual({ error: 'Invalid share encoding' });
+      }
+      if (scheme === 'e' || scheme === 'te') {
+        expect(await decodeHtmlPayload(`#${scheme}=` + 'A'.repeat(59), pw)).toEqual({ error: 'Invalid encrypted share data' });
+      }
+    }
+    expect(allocate).not.toHaveBeenCalled();
+    expect(kdf).not.toHaveBeenCalled();
+    expect(decompress).not.toHaveBeenCalled();
+  });
+
+  it.each(schemes)('accepts the largest raw #%s= layer pair allowed by the file byte budgets', async (scheme) => {
+    const encrypted = scheme === 'e' || scheme === 'te';
+    // Password decoding counts both wire and plaintext, including 44 bytes
+    // of overhead: 2 * plaintext + 44 must fit within the 8 MiB total.
+    const size = encrypted ? (SHARE_LIMITS.totalBytes - 44) / 2 : SHARE_LIMITS.layerBytes;
+    const value = scheme === 'td' || scheme === 'te' ? envelope() : sample;
+    const json = JSON.stringify(value);
+    const payload = await wire(scheme, utf8.encode(json + ' '.repeat(size - bytes(value).length)));
+    expect(payload.length).toBeLessThanOrEqual(HTML_PAYLOAD_MAX_CHARS);
+    expect(await read(payload)).toEqual(sample);
+
+    const oversized = `#${scheme}=` + b64u(new Uint8Array(size + (encrypted ? 44 : 0) + 1));
+    expect(oversized.length).toBeLessThanOrEqual(HTML_PAYLOAD_MAX_CHARS);
+    const allocate = vi.spyOn(globalThis, 'atob');
+    const kdf = vi.spyOn(crypto.subtle, 'deriveKey');
+    for (const pw of [undefined, password]) {
+      expect(await decodeHtmlPayload(oversized, pw)).toEqual({
+        error: encrypted ? 'Share data exceeds the total byte budget' : 'Share data exceeds the 4 MiB limit',
+      });
+    }
+    expect(allocate).not.toHaveBeenCalled();
+    expect(kdf).not.toHaveBeenCalled();
+  });
+
+  it.each(schemes)('round-trips exactly 4 MiB of JSON in #%s= files', async (scheme) => {
+    const doc = sizedDocument(SHARE_LIMITS.layerBytes);
+    expect(await read(await encodeHtmlPayload(doc, options(scheme)))).toEqual(doc);
+  });
+
+  it.each(schemes)('rejects document byte, schema and comment overflows in #%s= files', async (scheme) => {
+    for (const [value, error] of [
+      [sizedDocument(SHARE_LIMITS.layerBytes + 1), 'Share data exceeds the 4 MiB limit'],
+      [{ ...rich, title: {} }, 'Invalid document data'],
+      [commented(1001, 0), 'Too many comment threads to share'],
+      [commented(1, 201), 'Too many replies in a thread to share'],
+    ] as const) {
+      await expect(read(await documentLink(scheme, bytes(value)))).rejects.toThrow(error);
+      seal.mockClear();
+      const kdf = vi.spyOn(crypto.subtle, 'deriveKey');
+      kdf.mockClear();
+      await expect(encodeHtmlPayload(value as DocState, options(scheme))).rejects.toThrow(error);
+      expect(kdf).not.toHaveBeenCalled();
+      expect(seal).not.toHaveBeenCalled();
+    }
+  });
+
+  it.each(schemes)('accepts exactly 1000 threads or 200 replies in #%s= files', async (scheme) => {
+    for (const value of [commented(1000, 0), commented(1, 200)]) {
+      expect(await read(await encodeHtmlPayload(value, options(scheme)))).toEqual(value);
+    }
+  });
+
+  it.each(['td', 'te'] as const)('validates #%s= file envelopes and retains the capsule open budget', async (scheme) => {
+    for (const change of [{ v: 2 }, { age: 'not armor' }, { round: round + 1 }, { unlockMs: null }]) {
+      expect(await decodeHtmlPayload(await wire(scheme, await gzipFixture(bytes({ ...envelope(), ...change }))), password))
+        .toEqual({ error: 'Invalid time-capsule envelope' });
+    }
+    const oversized = sizedEnvelope(SHARE_LIMITS.layerBytes + 1);
+    expect(await decodeHtmlPayload(await wire(scheme, await gzipFixture(bytes(oversized))), password))
+      .toEqual({ error: 'Share data exceeds the 4 MiB limit' });
+    expect(unseal).not.toHaveBeenCalled();
+
+    const env = sizedEnvelope(SHARE_LIMITS.layerBytes);
+    const decoded = await decodeHtmlPayload(await wire(scheme, await gzipFixture(bytes(env))), password);
+    expect(decoded.timeCapsule).toEqual(env);
+    unseal.mockResolvedValueOnce(await gzipFixture(bytes(sizedDocument(SHARE_LIMITS.layerBytes))));
+    await expect(openTimeCapsule(decoded.timeCapsule!)).rejects.toThrow('Share data exceeds the total byte budget');
+
+    const blank = { ...envelope(), age: armor('') };
+    seal.mockResolvedValueOnce(armor('A'.repeat(SHARE_LIMITS.layerBytes - bytes(blank).length)));
+    const kdf = vi.spyOn(crypto.subtle, 'deriveKey');
+    await expect(encodeHtmlPayload(sizedDocument(SHARE_LIMITS.layerBytes), options(scheme))).rejects.toThrow('Share data exceeds the total byte budget');
+    expect(kdf).not.toHaveBeenCalled();
+  });
+
+  it.each(['e', 'te'] as const)('stops #%s= decompression when individually valid layers exceed 8 MiB', async (scheme) => {
+    const doc = noisyDocument(2.5 * 1024 * 1024);
+    const value = scheme === 'e' ? doc : { ...envelope(), padding: doc.md };
+    const json = bytes(value);
+    const compressed = await gzipFixture(json);
+    expect(json.length).toBeLessThan(SHARE_LIMITS.layerBytes);
+    expect(compressed.length * 2 + 44).toBeLessThan(SHARE_LIMITS.totalBytes);
+    expect(compressed.length * 2 + 44 + json.length).toBeGreaterThan(SHARE_LIMITS.totalBytes);
+    expect(await decodeHtmlPayload(await wire(scheme, compressed), password)).toEqual({ error: 'Share data exceeds the total byte budget' });
+    expect(unseal).not.toHaveBeenCalled();
+    if (scheme === 'e') {
+      const kdf = vi.spyOn(crypto.subtle, 'deriveKey');
+      await expect(encodeHtmlPayload(doc, { password })).rejects.toThrow('Share data exceeds the total byte budget');
+      expect(kdf).not.toHaveBeenCalled();
+    }
+  });
+
+  it.each(schemes)('does not fall back on damaged #%s= gzip or missing compression support', async (scheme) => {
+    const compressed = await gzipFixture(bytes(sample));
+    const damaged = compressed.slice();
+    damaged[damaged.length - 8] ^= 1;
+    for (const data of [damaged, compressed.subarray(0, -1), new Uint8Array([0x1e, 0x8b, 0, 0])]) {
+      const payload = scheme === 'td' || scheme === 'te' ? await gzipFixture(bytes(envelope(data))) : data;
+      await expect(read(await wire(scheme, payload))).rejects.toThrow(/Invalid (gzip )?share data/);
+    }
+    const valid = await documentLink(scheme, bytes(sample));
+    vi.stubGlobal('DecompressionStream', undefined);
+    await expect(read(valid)).rejects.toThrow('Gzip decompression is not supported in this browser');
+    vi.stubGlobal('CompressionStream', undefined);
+    await expect(encodeHtmlPayload(sample, options(scheme))).rejects.toThrow('Compression is not supported in this browser');
+  });
+
+  it('reports unavailable password protection instead of producing a plaintext file', async () => {
+    const payload = await encodeHtmlPayload(sample, { password });
+    vi.stubGlobal('crypto', undefined);
+    expect(await decodeHtmlPayload(payload, password)).toEqual({ error: 'Password sharing is not supported in this browser' });
+    await expect(encodeHtmlPayload(sample, { password })).rejects.toThrow('Password sharing is not supported in this browser');
   });
 });
