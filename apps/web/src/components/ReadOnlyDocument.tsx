@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { useReadingSettings } from '../hooks/useReadingSettings';
 import type { DocState, Settings } from '../types';
+import { Brand } from './Brand';
 import { IconComment, IconHelp, IconSettings, IconShare } from './Icons';
 import { Preview } from './Preview';
 import { Thread } from './Thread';
@@ -157,7 +158,7 @@ export function ReadOnlyDocument({
     <div className="app readonly-document">
       <div className="readonly-content" ref={contentRef}>
         <header className="topbar">
-          <div className="brand"><div className="brand-mark">F</div><span>Foil</span></div>
+          <Brand />
           <h1 className="readonly-title">{doc.title || 'Untitled document'}</h1>
           <span className="viewing-chip"><span className="dot" />{viewingLabel}{viewingActions}</span>
           {doc.comments.length > 0 && (

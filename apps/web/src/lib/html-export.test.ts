@@ -36,7 +36,11 @@ describe('HTML assembly and file resources', () => {
     const dom = parse(file.html);
     expect(dom.title).toBe(doc.title);
     expect(dom.querySelectorAll('script')).toHaveLength(2);
-    expect(dom.querySelector('img, script[src], link, iframe, base, form')).toBeNull();
+    expect(dom.querySelector('img, script[src], link:not([rel="icon"]), iframe, base, form')).toBeNull();
+    const icons = dom.querySelectorAll('link[rel="icon"]');
+    expect(icons).toHaveLength(1);
+    expect(icons[0].getAttribute('type')).toBe('image/svg+xml');
+    expect(icons[0].getAttribute('href')).toMatch(/^data:image\/svg\+xml,/);
     const data = readEmbeddedShareData(dom);
     expect(data.shareBaseUrl).toBe('https://example.test/foil/');
     expect(await decodeHtmlPayload(data.payload)).toEqual({ state: doc });

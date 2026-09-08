@@ -1,3 +1,4 @@
+import foilMark from '../assets/brand/foil-favicon.svg?inline';
 import { parseHtmlShareData, type HtmlShareData } from './html-share-format';
 import { parseStandaloneRuntime, STANDALONE_IDS, type StandaloneRuntime } from './standalone-runtime';
 
@@ -68,6 +69,7 @@ export async function assembleHtmlShare(input: HtmlExportInput): Promise<HtmlExp
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="referrer" content="no-referrer">
 <title>${escapeHtml(title)}</title>
+<link rel="icon" type="image/svg+xml" href="${escapeHtml(foilMark)}">
 <style id="${STANDALONE_IDS.styles}">${styles}</style>
 </head>
 <body>

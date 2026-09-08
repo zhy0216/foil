@@ -1,4 +1,9 @@
-# Foil
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="apps/web/src/assets/brand/foil-logo-dark.svg">
+    <img src="apps/web/src/assets/brand/foil-logo.svg" alt="Foil" width="176" height="77">
+  </picture>
+</h1>
 
 A markdown editor that lives entirely in your browser. Type, format, share a link or an HTML file.
 

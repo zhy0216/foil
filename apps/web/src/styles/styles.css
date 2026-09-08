@@ -35,29 +35,16 @@ input, textarea { font: inherit; color: inherit; }
   position: sticky; top: 0; z-index: 20;
 }
 .brand {
-  display: flex; align-items: center; gap: 10px;
-  font-weight: var(--fw-semibold);
-  letter-spacing: -0.01em;
-  font-size: var(--text-sm);
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  color: var(--fg);
 }
-.brand-mark {
-  width: 22px; height: 22px;
-  background: var(--cerulean-800);
-  border-radius: 4px;
-  position: relative;
-  display: inline-flex; align-items: center; justify-content: center;
-  color: #fff;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 1;
-}
-.brand-mark::after {
-  content: "";
-  position: absolute; inset: 2px;
-  border: 1px solid rgba(255,255,255,.18);
-  border-radius: 3px;
-  pointer-events: none;
+.brand-logo {
+  display: block;
+  width: 74px;
+  height: 32px;
+  flex: none;
 }
 /* ---------- Document switcher (title + dropdown + rename) ---------- */
 .doc-switcher {

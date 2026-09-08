@@ -80,11 +80,15 @@ export function inspectFile(html: string, mode: Mode, baseURL: string, password 
   const styles = block(html, 'style', 'foil-share-styles');
   const digest = createHash('sha256').update(script, 'utf8').digest('base64');
   expect(html).toContain(`script-src &#39;sha256-${digest}&#39;;`);
-  expect(html).not.toMatch(/<script\b[^>]*\bsrc=|<link\b|\bunsafe-eval\b/i);
+  expect(html).not.toMatch(/<script\b[^>]*\bsrc=|\bunsafe-eval\b/i);
   expect(styles).not.toMatch(/@import\b|url\s*\(/i);
   // The runtime includes the re-export assembler's literal opening tags. Count
   // shell elements without treating JavaScript strings as additional HTML.
-  expect([...html.replace(script, '').matchAll(/<script\b/g)]).toHaveLength(2);
+  const shell = html.replace(script, '');
+  expect([...shell.matchAll(/<script\b/g)]).toHaveLength(2);
+  const links = [...shell.matchAll(/<link\b[^>]*>/gi)];
+  expect(links).toHaveLength(1);
+  expect(links[0][0]).toMatch(/^<link rel="icon" type="image\/svg\+xml" href="data:image\/svg\+xml,[^"]+">$/);
   for (const privateValue of ['AUTHOR_PRIVATE_NAME_SENTINEL', password]) expect(html).not.toContain(privateValue);
   if (mode !== 'd') {
     expect(html).toContain('<title>Foil shared document</title>');
@@ -118,6 +122,10 @@ export async function expectDocument(page: Page, doc = DOC, website = false, sto
   await expect(page.locator('[contenteditable="true"], input:not([readonly]), textarea, .composer, .doc-switcher, .toolbar')).toHaveCount(0);
   if (!website) await expect(page.getByRole('button', { name: /Edit anyway|New document|Reply|Delete/ })).toHaveCount(0);
   if (!website) await expect(page.locator('script')).toHaveCount(2);
+  const brand = page.getByRole('img', { name: 'Foil', exact: true });
+  await expect(brand).toBeVisible();
+  expect(await brand.locator('path').count()).toBeGreaterThan(0);
+  await expect(brand.locator('image')).toHaveCount(0);
   await expect(page.locator('.readonly-document img, .readonly-document script, .readonly-document [onerror], .readonly-document [onload]')).toHaveCount(0);
   expect(await page.evaluate(() => 'fileInjected' in globalThis)).toBe(false);
   await expect(page.locator('.statusbar')).toContainText(`${doc.md.length.toLocaleString('en-US')} chars`);

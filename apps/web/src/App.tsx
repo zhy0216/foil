@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { Brand } from './components/Brand';
 import { Composer } from './components/Composer';
 import { DocSwitcher } from './components/DocSwitcher';
 import { Editor, type EditorHandle } from './components/Editor';
@@ -786,10 +787,7 @@ export default function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <div className="brand">
-          <div className="brand-mark">F</div>
-          <span>Foil</span>
-        </div>
+        <Brand />
         <DocSwitcher
           title={title}
           onTitleChange={(next) => {
