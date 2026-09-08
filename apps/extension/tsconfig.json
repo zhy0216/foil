@@ -1,0 +1,5 @@
+{
+  "extends": "@foil/typescript-config/react.json",
+  "compilerOptions": { "types": ["vite/client", "chrome", "node"] },
+  "include": ["src", "scripts", "vite.config.ts", "vitest.config.ts"]
+}

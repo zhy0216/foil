@@ -2,7 +2,7 @@
 
 Plan: [../plan.md](../plan.md). Deliver `apps/extension` as a packaged Chrome/Edge Manifest V3 editor sharing the existing Foil runtime, with public website links, HTML export, explicit share-link import, and installed-package browser tests.
 
-Status: 01 is complete in its isolated task branch and awaits coordinator integration; 02–04 are pending. Product assumption: toolbar button opens the full editor in a tab. Honor any later user correction before starting dependent work.
+Status: 01 is merged and cleaned at `86d6aaa18b2525a7ab0f147d4ddb1a6fe30ee460`; 02 is complete in its isolated task branch and awaits explicit coordinator integration; 03–04 are pending. Product: a Chrome/Edge MV3 toolbar button opens the full editor in a new tab. Honor any later user correction before starting dependent work.
 
 ## Execution preferences
 
@@ -16,8 +16,8 @@ Coordinator: `codex` / `gpt-6-astra` / `high`. Task mapping: hard → `gpt-6-ast
 
 | File | Status | Priority | Difficulty | Agent | Model / Codex reasoning | Description |
 | --- | --- | --- | --- | --- | --- | --- |
-| [01-shared-editor.md](done/01-shared-editor.md) | Complete; awaiting integration | P1 | hard | codex, inherited default | gpt-6-astra / max | Extract the existing application and standalone builder into a shared workspace package with a small host boundary |
-| [02-extension-package.md](02-extension-package.md) | Pending | P1 | hard | codex, inherited default | gpt-6-astra / max | Package the real Manifest V3 editor, action worker, local assets, share-base configuration, icons and ZIP command |
+| [01-shared-editor.md](done/01-shared-editor.md) | Merged and cleaned (`86d6aaa`) | P1 | hard | codex, inherited default | gpt-6-astra / max | Extract the existing application and standalone builder into a shared workspace package with a small host boundary |
+| [02-extension-package.md](done/02-extension-package.md) | Complete; awaiting integration | P1 | hard | codex, inherited default | gpt-6-astra / max | Package the real Manifest V3 editor, action worker, local assets, share-base configuration, icons and ZIP command |
 | [03-share-link-import.md](03-share-link-import.md) | Pending | P1 | medium | codex, inherited default | gpt-6-astra / xhigh | Accept a deliberately pasted share link and open the existing read-only/protected/fork workflow in a new extension tab |
 | [04-extension-regressions.md](04-extension-regressions.md) | Pending | P1 | hard | codex, inherited default | gpt-6-astra / max | Exercise the installed package, cross-host sharing and files; wire CI and document build/install/privacy behavior |
 
@@ -25,11 +25,11 @@ Coordinator: `codex` / `gpt-6-astra` / `high`. Task mapping: hard → `gpt-6-ast
 
 1. [01-shared-editor.md](done/01-shared-editor.md)
 
-   Completed locally; see its archived acceptance and API handoff. Dependencies: none. Owns `packages/editor`, moved source/tests, website entry/build/dependencies, root lockfile changes needed by extraction, and broken source links caused by moves.
+   Merged and cleaned at `86d6aaa`; see its archived acceptance and API handoff. Dependencies: none. Owns `packages/editor`, moved source/tests, website entry/build/dependencies, root lockfile changes needed by extraction, and broken source links caused by moves.
 
-2. [02-extension-package.md](02-extension-package.md)
+2. [02-extension-package.md](done/02-extension-package.md)
 
-   Depends on `01-shared-editor.md`. Owns `apps/extension` scaffolding, manifest/build/worker/entry/config, icons, package validation and ZIP generation, plus required root task/ignore/lockfile changes.
+   Completed locally; see its archived acceptance, artifact paths, browser limitations and API handoff. Depends on merged `01-shared-editor.md`. Owns `apps/extension` scaffolding, manifest/build/worker/entry/config, icons, package validation and ZIP generation, plus required root task/ignore/lockfile changes.
 
 3. [03-share-link-import.md](03-share-link-import.md)
 
@@ -50,7 +50,7 @@ Execution: `01 → 02 → 03 → 04`. No safe parallel tasks in this queue: sour
 - 04 must test the real extension origin with service workers enabled. Use bundled Playwright Chromium and fresh persistent profiles; website and local-file recipient contexts retain their appropriate existing configurations. No live public drand requests or security bypasses.
 - Website and extension use separate origin-local libraries; retain existing synchronous Web Storage for page data. No worker storage, content scripts, browser sync, broad host grants, or automatic website-data migration.
 - Manifest host grants are limited to the four existing drand HTTPS hosts. Keep locally bundled scripts under strict extension CSP and preserve the existing website/file policies.
-- Existing baseline is typecheck + 619 passing unit tests; planning recorded React act warnings and use of shell Node 24.20.0. Use pinned Node 22.22.3/Bun 1.4.2 for final checks; the pinned Node executable is installed locally as recorded in the plan.
+- Merged 01 baseline is 631 passing unit tests (619 original + 12 host/resource tests). Task 02 validates all 631 plus 52 extension tests: 683 total. Planning recorded React act warnings and shell Node 24.20.0; tasks 01/02 used pinned Node 22.22.3/Bun 1.4.2. Keep that toolchain for later checks.
 
 ## Validation and completion
 
