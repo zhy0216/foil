@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { standalonePlugin } from './build/standalone';
 
 /** Strict CSP injected into the built index.html. Drand endpoints stay in
  *  `connect-src` so time-capsule unlock still works. We omit this in dev so
@@ -18,7 +19,7 @@ function cspPlugin() {
 
 export default defineConfig({
   base: '/foil/',
-  plugins: [react(), cspPlugin()],
+  plugins: [react(), cspPlugin(), standalonePlugin()],
   // Preserve Vite 5's output targets when upgrading the build tool.
   build: { target: ['es2020', 'edge88', 'firefox78', 'chrome87', 'safari14'] },
   server: { port: 5173 },

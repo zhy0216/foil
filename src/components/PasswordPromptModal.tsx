@@ -4,9 +4,10 @@ interface Props {
   error: string | null;
   onSubmit: (pw: string) => void;
   onCancel: () => void;
+  busy?: boolean;
 }
 
-export function PasswordPromptModal({ error, onSubmit, onCancel }: Props) {
+export function PasswordPromptModal({ error, onSubmit, onCancel, busy = false }: Props) {
   const [pw, setPw] = useState('');
   return (
     <div className="modal-backdrop">
@@ -16,12 +17,14 @@ export function PasswordPromptModal({ error, onSubmit, onCancel }: Props) {
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            onSubmit(pw);
+            if (!busy) onSubmit(pw);
           }}
         >
           <label>Password</label>
           <input
             type="password"
+            aria-label="Password"
+            disabled={busy}
             value={pw}
             autoFocus
             onChange={(e) => setPw(e.target.value)}
@@ -36,8 +39,8 @@ export function PasswordPromptModal({ error, onSubmit, onCancel }: Props) {
               Cancel
             </button>
             <div className="spacer" />
-            <button type="submit" className="btn btn-primary">
-              Unlock
+            <button type="submit" className="btn btn-primary" disabled={busy}>
+              {busy ? 'Unlocking…' : 'Unlock'}
             </button>
           </div>
         </form>

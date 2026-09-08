@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   openTimeCapsule,
   type TimeCapsuleEnvelope,
 } from '../lib/url-codec';
-import { NotYetReadyError } from '../lib/timecapsule';
+import { NoEndpointError, NotYetReadyError } from '../lib/timecapsule';
 import type { DocState } from '../types';
 import { IconClock } from './Icons';
 
@@ -38,11 +38,22 @@ function fmtAbsolute(ms: number): string {
 }
 
 export function TimeCapsuleUnlock({ envelope, onUnlocked, onCancel }: Props) {
+  const operation = useRef<AbortController | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [phase, setPhase] = useState<Phase>(
     envelope.unlockMs <= Date.now() ? 'ready' : 'locked'
   );
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setNow(Date.now());
+    setPhase(envelope.unlockMs <= Date.now() ? 'ready' : 'locked');
+    setError(null);
+    return () => {
+      operation.current?.abort();
+      operation.current = null;
+    };
+  }, [envelope]);
 
   // 1s tick — drives both the countdown and the locked→ready transition.
   useEffect(() => {
@@ -57,6 +68,10 @@ export function TimeCapsuleUnlock({ envelope, onUnlocked, onCancel }: Props) {
   const remaining = envelope.unlockMs - now;
 
   async function attemptUnlock() {
+    if (operation.current) return;
+    const controller = new AbortController();
+    operation.current = controller;
+    const { signal } = controller;
     setPhase('unlocking');
     setError(null);
 
@@ -65,18 +80,35 @@ export function TimeCapsuleUnlock({ envelope, onUnlocked, onCancel }: Props) {
     for (let attempt = 0; attempt < 10; attempt++) {
       try {
         const state = await openTimeCapsule(envelope);
+        if (signal.aborted) return;
+        operation.current = null;
         onUnlocked(state);
         return;
       } catch (err) {
+        if (signal.aborted) return;
         if (err instanceof NotYetReadyError) {
-          await new Promise((r) => setTimeout(r, 3000));
+          await new Promise<void>((resolve) => {
+            const done = () => {
+              clearTimeout(timer);
+              signal.removeEventListener('abort', done);
+              resolve();
+            };
+            const timer = setTimeout(done, 3000);
+            signal.addEventListener('abort', done, { once: true });
+          });
+          if (signal.aborted) return;
           continue;
         }
+        operation.current = null;
         setPhase('error');
-        setError(err instanceof Error ? err.message : String(err));
+        setError(err instanceof NoEndpointError
+          ? 'Could not reach drand. Check your connection and retry.'
+          : 'Could not open time capsule. Please retry.');
         return;
       }
     }
+    if (signal.aborted) return;
+    operation.current = null;
     setPhase('error');
     setError("Signature still not published after several tries. Try again in a minute.");
   }
@@ -119,7 +151,11 @@ export function TimeCapsuleUnlock({ envelope, onUnlocked, onCancel }: Props) {
         )}
 
         <div className="modal-actions">
-          <button type="button" className="btn" onClick={onCancel}>
+          <button type="button" className="btn" onClick={() => {
+            operation.current?.abort();
+            operation.current = null;
+            onCancel();
+          }}>
             Cancel
           </button>
           <div className="spacer" />
