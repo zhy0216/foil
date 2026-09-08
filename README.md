@@ -1,7 +1,7 @@
 <h1>
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="apps/web/src/assets/brand/foil-logo-dark.svg">
-    <img src="apps/web/src/assets/brand/foil-logo.svg" alt="Foil" width="176" height="77">
+    <source media="(prefers-color-scheme: dark)" srcset="packages/editor/src/assets/brand/foil-logo-dark.svg">
+    <img src="packages/editor/src/assets/brand/foil-logo.svg" alt="Foil" width="176" height="77">
   </picture>
 </h1>
 
@@ -72,7 +72,7 @@ The password layer is always outermost, so someone without the password cannot r
 
 **Loading a shared link.** On load, if the URL has a fragment, Foil decodes it and clears the fragment from the address bar. Password links prompt for the password; time capsules show an unlock screen and stay sealed until drand publishes the unlock round. Once open, the document renders read-only — click the edit affordance to fork it into your local library.
 
-See `apps/web/src/lib/url-codec.ts` (packing), `apps/web/src/lib/timecapsule.ts` (drand tlock), and `apps/web/src/lib/doc-store.ts` (local storage) for the full implementations.
+See `packages/editor/src/lib/url-codec.ts` (packing), `packages/editor/src/lib/timecapsule.ts` (drand tlock), and `packages/editor/src/lib/doc-store.ts` (local storage) for the full implementations.
 
 ## Features
 
@@ -93,11 +93,13 @@ This is a [Turborepo](https://turborepo.com/docs/crafting-your-repository/struct
 ```text
 apps/
   web/                       # @foil/web: the Foil website
-    src/                     # React app, standalone reader and unit tests
+    src/                     # Website mounting entry
     tests/e2e/               # Playwright website and local-file tests
-    build/                   # Standalone HTML build plugin
     dist/                    # Generated static website (ignored)
 packages/
+  editor/                    # @foil/editor: source-first shared application
+    src/                     # Editor, standalone reader, assets and unit tests
+    build/                   # Node-only standalone resource builder
   typescript-config/         # @foil/typescript-config: base and React TS configs
 turbo.json                   # Task dependencies and cache settings
 package.json                # Workspace definitions and root commands
@@ -121,11 +123,11 @@ bun run test:e2e:install # first use: install Chromium + WebKit; Linux CI adds -
 bun run test:e2e   # production build, then Chromium + WebKit website/file tests
 ```
 
-Root commands use Turbo. `build`, `typecheck` and `test` are cached in `.turbo/`; browser tests always run and depend on the production build. Dev and preview servers are persistent and uncached. Limit a task with `--filter=@foil/web`. For package-specific arguments, invoke the installed Turbo CLI directly with `bunx --no-install` so Bun's script runner does not consume Turbo's `--` separator:
+Root commands use Turbo. Unit tests run once in `@foil/editor`; the website owns the browser suite. `build`, `typecheck` and `test` are cached in `.turbo/`; browser tests always run and depend on the production build. Dev and preview servers are persistent and uncached. Limit a task with `--filter=@foil/web`. For package-specific arguments, invoke the installed Turbo CLI directly with `bunx --no-install` so Bun's script runner does not consume Turbo's `--` separator:
 
 ```bash
 bun run dev --filter=@foil/web
-bunx --no-install turbo run test --filter=@foil/web -- src/lib/url-codec.test.ts
+bunx --no-install turbo run test --filter=@foil/editor -- src/lib/url-codec.test.ts
 bunx --no-install turbo run test:e2e -- --workers=2
 ```
 
@@ -134,9 +136,14 @@ For root-path regression, finish the default suite first, then run these command
 ```bash
 bunx --no-install turbo run build --filter=@foil/web -- --base /
 FOIL_E2E_BASE=/ bun run --cwd apps/web test:e2e --workers=2
+bun run build # restore the default /foil/ artifact
 ```
 
 `FOIL_E2E_PORT=4273` can select a free preview port for either test command. The package-level `test:e2e` runs Playwright against the existing build, so use it for the root-path variant; the root-level Turbo command first ensures the default `/foil/` build. Do not run two builds against the same `apps/web/dist/`. To run only the file matrix after a matching build, use `bun run --cwd apps/web test:e2e tests/e2e/html-export.spec.ts --workers=2` (add `FOIL_E2E_BASE=/` for a root build). Downloads and reports stay in ignored Playwright output directories under `apps/web/`; tests use only fixtures from the current checkout and never use public drand services. WebKit file tests reject all HTTP(S) through routing instead of Playwright's offline switch, which also prevents static file navigation.
+
+The shared `@foil/editor` package exports `App` and `AppProps`, `@foil/editor/share` (HTTP(S) base normalization and URL codec helpers/limits), `@foil/editor/types`, `@foil/editor/standalone-runtime` (resource types/IDs and validation), the two `styles/*.css` entries and `brand/*.svg` assets. Hosts mount `<App />` for current-origin/path sharing, or pass `shareBaseUrl` and a React `headerActions` slot. The slot appears beside Settings/Share in editing and read-only headers.
+
+Vite hosts register `standalonePlugin()` from the Node-only `@foil/editor/build/standalone` subpath. It resolves reader inputs from the shared package and emits `foil-standalone.js` into each host’s own build. The runtime loader resolves `import.meta.env.BASE_URL` against `document.baseURI` before importing, including relative `./` bases. The package has no build artifact; Turbo tracks it through the existing `^build` dependency graph.
 
 Stack: React 18 + TypeScript + Vite, with `buffer`, `tlock-js` and `drand-client` for time capsules. Website crypto stays dynamically loaded. The standalone reader includes crypto and styles in one file; its resource module is loaded by the website only when exporting HTML. Each build checks that the standalone entry has no editor/document-library dependencies or external chunks.
 

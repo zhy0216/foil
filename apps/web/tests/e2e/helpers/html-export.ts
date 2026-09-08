@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { mkdir, readFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { expect, type BrowserContext, type Page, type Route, type TestInfo } from '@playwright/test';
-import type { DocState } from '../../../src/types';
+import type { DocState } from '@foil/editor/types';
 import { DRAND_BEACON, DRAND_INFO, DRAND_ORIGINS, UNLOCK_MS } from './drand';
 
 export type Mode = 'd' | 'e' | 'td' | 'te';

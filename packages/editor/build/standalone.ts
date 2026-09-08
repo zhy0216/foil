@@ -1,12 +1,14 @@
 import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { build, type InlineConfig, type Plugin, type Rollup } from 'vite';
 import react from '@vitejs/plugin-react';
-import { parseStandaloneRuntime, STANDALONE_RESOURCE_FILE, type StandaloneRuntime } from '../src/lib/standalone-runtime';
+import { parseStandaloneRuntime, STANDALONE_RESOURCE_FILE, type StandaloneRuntime } from '@foil/editor/standalone-runtime';
 
 const forbidden = /\/src\/(?:App\.tsx|components\/(?:Editor|DocSwitcher|Composer)\.tsx|lib\/(?:doc-store|standalone-runtime-loader)\.ts)$/;
+const root = fileURLToPath(new URL('../', import.meta.url));
 
 /** In-memory nested builds explicitly exclude this plugin and vite.config.ts. */
-export async function buildStandaloneRuntime(root: string): Promise<StandaloneRuntime> {
+export async function buildStandaloneRuntime(): Promise<StandaloneRuntime> {
   async function bundle(entry: string, bootstrap: boolean) {
     const config: InlineConfig = {
       root, configFile: false, envFile: false, publicDir: false,
@@ -15,7 +17,10 @@ export async function buildStandaloneRuntime(root: string): Promise<StandaloneRu
       // The parent dev server keeps NODE_ENV=development. Force production JSX
       // here as well as React's NODE_ENV branch, without mutating that server.
       esbuild: { jsxDev: false },
-      resolve: { alias: [{ find: /^buffer\/?$/, replacement: bootstrap ? 'buffer/' : resolve(root, 'src/standalone/buffer.ts') }] },
+      resolve: {
+        dedupe: ['react', 'react-dom'],
+        alias: [{ find: /^buffer\/?$/, replacement: bootstrap ? 'buffer/' : resolve(root, 'src/standalone/buffer.ts') }],
+      },
       define: { global: 'globalThis', 'process.env.NODE_ENV': '"production"' },
       build: {
         write: false, sourcemap: false, cssCodeSplit: false, modulePreload: false,
@@ -58,13 +63,13 @@ function resourceModule(runtime: StandaloneRuntime): string {
 }
 
 export function standalonePlugin(): Plugin {
-  let root = '', base = '/';
+  let base = '/';
   return {
     name: 'foil-standalone-resources',
-    configResolved(config) { root = config.root; base = config.base; },
+    configResolved(config) { base = config.base; },
     async generateBundle() {
       this.emitFile({ type: 'asset', fileName: STANDALONE_RESOURCE_FILE,
-        source: resourceModule(await buildStandaloneRuntime(root)) });
+        source: resourceModule(await buildStandaloneRuntime()) });
     },
     configureServer(server) {
       server.middlewares.use(async (req, res, next) => {
@@ -72,7 +77,7 @@ export function standalonePlugin(): Plugin {
         if (path !== base + STANDALONE_RESOURCE_FILE && path !== '/' + STANDALONE_RESOURCE_FILE) return next();
         try {
           // Rebuild on demand in dev: no stale cached template after source edits.
-          const runtime = await buildStandaloneRuntime(root);
+          const runtime = await buildStandaloneRuntime();
           res.statusCode = 200;
           res.setHeader('Content-Type', 'text/javascript; charset=utf-8');
           res.setHeader('Cache-Control', 'no-store');

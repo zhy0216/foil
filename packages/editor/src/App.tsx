@@ -4,6 +4,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ReactNode,
 } from 'react';
 import { Brand } from './components/Brand';
 import { Composer } from './components/Composer';
@@ -57,7 +58,7 @@ import type {
   Settings,
 } from './types';
 
-async function exportWebsiteHtml(state: DocState, options: ShareOptions, shareBaseUrl?: string) {
+async function exportHostHtml(state: DocState, options: ShareOptions, shareBaseUrl?: string) {
   const runtime = await loadStandaloneRuntime();
   const payload = await encodeHtmlPayload(state, options);
   return assembleHtmlShare({ payload, runtime, title: state.title, shareBaseUrl });
@@ -135,7 +136,14 @@ export function loadInitialSettings(): Settings {
   return loadInitialPreferences().settings;
 }
 
-export default function App() {
+export interface AppProps {
+  /** Public HTTP(S) website for links and HTML re-sharing. Defaults to this page's origin/path. */
+  shareBaseUrl?: string;
+  /** Additional controls beside Settings/Share in editing and read-only headers. */
+  headerActions?: ReactNode;
+}
+
+export default function App({ shareBaseUrl, headerActions }: AppProps) {
   const [initialPreferences] = useState<InitialPreferences>(loadInitialPreferences);
   const [settings, setSettings] = useState<Settings>(initialPreferences.settings);
 
@@ -753,8 +761,8 @@ export default function App() {
         getState={getState}
         onToast={showToast}
         onLearnMore={() => setHelpOpen(true)}
-        shareBaseUrl={window.location.origin + window.location.pathname}
-        exportHtml={exportWebsiteHtml}
+        shareBaseUrl={shareBaseUrl ?? window.location.origin + window.location.pathname}
+        exportHtml={exportHostHtml}
       />
 
       <HelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
@@ -772,6 +780,7 @@ export default function App() {
           onShare={() => setShareOpen(true)}
           onSettings={() => setSettingsOpen(true)}
           onHelp={() => setHelpOpen(true)}
+          headerActions={headerActions}
           viewingLabel="Viewing shared link"
           viewingActions={(
             <button className="btn" style={{ padding: '0 6px', fontSize: 11, color: 'inherit' }} onClick={handleEditShared}>
@@ -809,6 +818,7 @@ export default function App() {
           </span>
         )}
         <div className="topbar-actions">
+          {headerActions}
           <button
             className="btn btn-icon"
             onClick={() => setSettingsOpen(true)}

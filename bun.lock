@@ -12,11 +12,9 @@
       "name": "@foil/web",
       "version": "0.1.0",
       "dependencies": {
-        "buffer": "6.0.3",
-        "drand-client": "1.2.5",
+        "@foil/editor": "workspace:*",
         "react": "^18.3.1",
         "react-dom": "^18.3.1",
-        "tlock-js": "^0.9.0",
       },
       "devDependencies": {
         "@foil/typescript-config": "workspace:*",
@@ -25,11 +23,35 @@
         "@types/react": "^18.3.12",
         "@types/react-dom": "^18.3.1",
         "@vitejs/plugin-react": "5.2.0",
+        "typescript": "^5.6.3",
+        "vite": "7.3.6",
+      },
+    },
+    "packages/editor": {
+      "name": "@foil/editor",
+      "version": "0.1.0",
+      "dependencies": {
+        "buffer": "6.0.3",
+        "drand-client": "1.2.5",
+        "tlock-js": "^0.9.0",
+      },
+      "devDependencies": {
+        "@foil/typescript-config": "workspace:*",
+        "@types/node": "22.20.1",
+        "@types/react": "^18.3.12",
+        "@types/react-dom": "^18.3.1",
+        "@vitejs/plugin-react": "5.2.0",
         "@vitest/ui": "4.1.11",
         "jsdom": "^29.1.1",
+        "react": "^18.3.1",
+        "react-dom": "^18.3.1",
         "typescript": "^5.6.3",
         "vite": "7.3.6",
         "vitest": "4.1.11",
+      },
+      "peerDependencies": {
+        "react": "^18.3.1",
+        "react-dom": "^18.3.1",
       },
     },
     "packages/typescript-config": {
@@ -151,6 +173,8 @@
     "@esbuild/win32-x64": ["@esbuild/win32-x64@0.28.2", "", { "os": "win32", "cpu": "x64" }, "sha512-5ebpxr3nWMzrL/rnUI755Jkuee0bHL/Gq0WTF9lvcpv73wAp5eu8MfBUgWK9bhWvZjj7yX8etf/8tI8Ney695g=="],
 
     "@exodus/bytes": ["@exodus/bytes@1.15.1", "", { "peerDependencies": { "@noble/hashes": "^1.8.0 || ^2.0.0" }, "optionalPeers": ["@noble/hashes"] }, "sha512-S6mL0yNB/Abt9Ei4tq8gDhcczc4S3+vQ4ra7vxnAf+YHC02srtqxKKZghx2Dq6p0e66THKwR6r8N6P95wEty7Q=="],
+
+    "@foil/editor": ["@foil/editor@workspace:packages/editor"],
 
     "@foil/typescript-config": ["@foil/typescript-config@workspace:packages/typescript-config"],
 

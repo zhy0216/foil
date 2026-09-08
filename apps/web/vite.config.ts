@@ -1,6 +1,6 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import { standalonePlugin } from './build/standalone';
+import { standalonePlugin } from '@foil/editor/build/standalone';
 
 /** Strict CSP injected into the built index.html. Drand endpoints stay in
  *  `connect-src` so time-capsule unlock still works. We omit this in dev so
@@ -24,6 +24,7 @@ export default defineConfig({
   build: { target: ['es2020', 'edge88', 'firefox78', 'chrome87', 'safari14'] },
   server: { port: 5173 },
   resolve: {
+    dedupe: ['react', 'react-dom'],
     alias: {
       // tlock-js imports Node's Buffer; the `buffer` npm package is its browser polyfill.
       buffer: 'buffer/',

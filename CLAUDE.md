@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Commands
 
-Run workspace commands from the repository root. Bun manages `apps/*` and `packages/*`; Turbo schedules and caches tasks. The website is `@foil/web` in `apps/web`, and `@foil/typescript-config` provides shared base/React settings. Keep dependencies in the package that uses them and use `workspace:*` for internal dependencies. The root owns the pinned toolchain, Turbo and the single `bun.lock`.
+Run workspace commands from the repository root. Bun manages `apps/*` and `packages/*`; Turbo schedules and caches tasks. The website is `@foil/web` in `apps/web`, `@foil/editor` in `packages/editor` owns the shared application and unit tests, and `@foil/typescript-config` provides shared base/React settings. Keep dependencies in the package that uses them and use `workspace:*` for internal dependencies. The root owns the pinned toolchain, Turbo and the single `bun.lock`.
 
 ```bash
 bun install --frozen-lockfile
@@ -20,12 +20,12 @@ bun run test:e2e   # production build, then Chromium/WebKit website + real file 
 Use `--filter=@foil/web` to select the website. For package-specific arguments, invoke the installed Turbo CLI directly: Bun's script runner consumes the first `--` separator. Run a single test file, by name, or limit browser workers:
 
 ```bash
-bunx --no-install turbo run test --filter=@foil/web -- src/lib/url-codec.test.ts
-bunx --no-install turbo run test --filter=@foil/web -- -t "round-trips"
+bunx --no-install turbo run test --filter=@foil/editor -- src/lib/url-codec.test.ts
+bunx --no-install turbo run test --filter=@foil/editor -- -t "round-trips"
 bunx --no-install turbo run test:e2e -- --workers=2
 ```
 
-Unit/component tests live next to their subjects in `apps/web/src/`. Browser tests live in `apps/web/tests/e2e/`. Run typecheck, the full unit suite, then build/e2e sequentially: concurrent builds can starve the real 600k-round KDF tests of their five-second budget. After the default e2e suite completes, validate the root variant with `bunx --no-install turbo run build --filter=@foil/web -- --base /` followed by `FOIL_E2E_BASE=/ bun run --cwd apps/web test:e2e --workers=2`. The package-level browser command uses the existing build; the root Turbo command depends on the default build. Never build both variants into `apps/web/dist/` concurrently. `FOIL_E2E_PORT` selects an alternate preview port (default 4173). Browser tests are uncached; build, typecheck and unit tests use Turbo's local cache.
+Unit/component tests live next to their subjects in `packages/editor/src/`. Browser tests live in `apps/web/tests/e2e/`. Run typecheck, the full unit suite, then build/e2e sequentially: concurrent builds can starve the real 600k-round KDF tests of their five-second budget. After the default e2e suite completes, validate the root variant with `bunx --no-install turbo run build --filter=@foil/web -- --base /` followed by `FOIL_E2E_BASE=/ bun run --cwd apps/web test:e2e --workers=2`. The package-level browser command uses the existing build; the root Turbo command depends on the default build. Never build both variants into `apps/web/dist/` concurrently. Finish with `bun run build` to restore the default `/foil/` artifact. `FOIL_E2E_PORT` selects an alternate preview port (default 4173). Browser tests are uncached; build, typecheck and unit tests use Turbo's local cache.
 
 ## What this is
 
@@ -35,7 +35,13 @@ The default build targets GitHub Pages under a subpath, so `apps/web/vite.config
 
 ## Architecture
 
-The application source lives in `apps/web/src/`. Paths beginning with `src/`, `build/` or `tests/` below are relative to `apps/web/`.
+The application source lives in `packages/editor/src/`. Paths beginning with `src/` or `build/` below are relative to `packages/editor/`; `tests/` paths are relative to `apps/web/`. The website keeps only its mount entry under `apps/web/src/`.
+
+### Host boundary
+
+`@foil/editor` exports `App` and `AppProps`. Optional `shareBaseUrl` supplies a public HTTP(S) website base for both links and HTML; omission retains current origin/path behavior. `ShareModal` normalizes it and strips search/hash; hosts validating their public share setting can use `normalizeShareBaseUrl` from `@foil/editor/share`. Optional `headerActions: ReactNode` renders beside Settings/Share in both editing and read-only headers. Standalone readers do not receive that slot. Keep host-specific browser APIs outside the shared package.
+
+Browser entries are source-first TypeScript for the host bundler. Other exports are `@foil/editor/types`, `@foil/editor/share` (URL encode/decode, limits and related types), `@foil/editor/standalone-runtime` (resource types/IDs and validation), `@foil/editor/styles/design-tokens.css`, `@foil/editor/styles/styles.css`, and `@foil/editor/brand/*.svg`. `@foil/editor/build/standalone` is Node-only: register `standalonePlugin()` in each host Vite config, or call `buildStandaloneRuntime()` with no arguments for in-memory `{ script, styles }`. Reader inputs resolve relative to the package, never the calling app root. There is no shared `build` script or dummy artifact; Turbo’s `^build` graph includes the source package when hashing host builds.
 
 ### The editor is the crux (read these together)
 
@@ -72,7 +78,7 @@ Key facts: the **password (AES-GCM-256, PBKDF2-SHA256 600k rounds) is always the
 - `Preview` decorates Markdown without importing `Editor`. `ReadOnlyDocument` composes it with read-only threads, all-comment navigation, mobile drawer, statistics and host actions. `useReadingSettings` applies presentation. Website previews supply **Edit anyway**; standalone files supply only Share/Settings/Help.
 - `src/standalone/main.tsx` / `StandaloneApp.tsx` read fixed embedded data once, then manage password, time gate, cancellation, error/retry and preview states. Documents never enter local storage; only preferences attempt storage, with an in-memory fallback. `resources.ts` reads the fixed data/script/style blocks, not unlocked DOM.
 - `build/standalone.ts`, wired into Vite, builds a Buffer bootstrap IIFE before the reader IIFE and collects all CSS. Build assertions reject editor, library, website resource-loader and external-chunk dependencies. The emitted `foil-standalone.js` is a resource-string module, not a second app launched on the website. Development serves a fresh on-demand build at the same base-relative path.
-- Only the website imports `standalone-runtime-loader.ts`, and only an HTML export requests the resource module. `ShareModal` takes `shareBaseUrl` and `exportHtml(state, options, shareBaseUrl)`; the callback returns `{ html, filename }`. The modal handles snapshot/expiry checks and actual Blob download independently of URL-generation success. The file callback reuses its fixed runtime/style blocks so re-export needs no server and cannot recursively embed the template.
+- Only app hosts import `standalone-runtime-loader.ts`, and only an HTML export requests the resource module. It resolves the host Vite base against `document.baseURI` before native import, so `./` loads next to the document instead of under a hashed `assets/` chunk. `ShareModal` takes `shareBaseUrl` and `exportHtml(state, options, shareBaseUrl)`; the callback returns `{ html, filename }`. The modal handles snapshot/expiry checks and actual Blob download independently of URL-generation success. The file callback reuses its fixed runtime/style blocks so re-export needs no server and cannot recursively embed the template.
 - `html-export.ts` safely assembles non-executable JSON, a generic protected filename/title and a CSP hash of the final inline script bytes. File CSP allows only drand connections; website CSP remains `script-src 'self'`. No unsafe browser flags are needed. Ordinary/password files work offline; time capsules retain the drand dependency. New sharing sessions require protection to be selected again.
 - `tests/e2e/html-export.spec.ts` clicks real Share downloads, saves to test output, navigates fresh recipient contexts to `file://`, refreshes and re-exports. Fixed quicknet/beacon fixtures are shared with website tests. All HTTP(S) is intercepted, with CORS-enabled drand fixtures only for capsules; do not use `page.setContent` or WebKit's offline switch as a substitute for this path. The latter rejects even simple static file navigation. From the repository root, run this file after a matching build with `bun run --cwd apps/web test:e2e tests/e2e/html-export.spec.ts --workers=2`.
 

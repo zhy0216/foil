@@ -2,7 +2,7 @@
 
 Plan: [../plan.md](../plan.md). Deliver `apps/extension` as a packaged Chrome/Edge Manifest V3 editor sharing the existing Foil runtime, with public website links, HTML export, explicit share-link import, and installed-package browser tests.
 
-Status: planned; no implementation has started in the planning session. Product assumption: toolbar button opens the full editor in a tab. Honor any later user correction before starting dependent work.
+Status: 01 is complete in its isolated task branch and awaits coordinator integration; 02–04 are pending. Product assumption: toolbar button opens the full editor in a tab. Honor any later user correction before starting dependent work.
 
 ## Execution preferences
 
@@ -14,18 +14,18 @@ Coordinator: `codex` / `gpt-6-astra` / `high`. Task mapping: hard → `gpt-6-ast
 
 ## Priority
 
-| File | Priority | Difficulty | Agent | Model / Codex reasoning | Description |
-| --- | --- | --- | --- | --- | --- |
-| [01-shared-editor.md](01-shared-editor.md) | P1 | hard | codex, inherited default | gpt-6-astra / max | Extract the existing application and standalone builder into a shared workspace package with a small host boundary |
-| [02-extension-package.md](02-extension-package.md) | P1 | hard | codex, inherited default | gpt-6-astra / max | Package the real Manifest V3 editor, action worker, local assets, share-base configuration, icons and ZIP command |
-| [03-share-link-import.md](03-share-link-import.md) | P1 | medium | codex, inherited default | gpt-6-astra / xhigh | Accept a deliberately pasted share link and open the existing read-only/protected/fork workflow in a new extension tab |
-| [04-extension-regressions.md](04-extension-regressions.md) | P1 | hard | codex, inherited default | gpt-6-astra / max | Exercise the installed package, cross-host sharing and files; wire CI and document build/install/privacy behavior |
+| File | Status | Priority | Difficulty | Agent | Model / Codex reasoning | Description |
+| --- | --- | --- | --- | --- | --- | --- |
+| [01-shared-editor.md](done/01-shared-editor.md) | Complete; awaiting integration | P1 | hard | codex, inherited default | gpt-6-astra / max | Extract the existing application and standalone builder into a shared workspace package with a small host boundary |
+| [02-extension-package.md](02-extension-package.md) | Pending | P1 | hard | codex, inherited default | gpt-6-astra / max | Package the real Manifest V3 editor, action worker, local assets, share-base configuration, icons and ZIP command |
+| [03-share-link-import.md](03-share-link-import.md) | Pending | P1 | medium | codex, inherited default | gpt-6-astra / xhigh | Accept a deliberately pasted share link and open the existing read-only/protected/fork workflow in a new extension tab |
+| [04-extension-regressions.md](04-extension-regressions.md) | Pending | P1 | hard | codex, inherited default | gpt-6-astra / max | Exercise the installed package, cross-host sharing and files; wire CI and document build/install/privacy behavior |
 
 ## 文件
 
-1. [01-shared-editor.md](01-shared-editor.md)
+1. [01-shared-editor.md](done/01-shared-editor.md)
 
-   Dependencies: none. Owns `packages/editor`, moved source/tests, website entry/build/dependencies, root lockfile changes needed by extraction, and broken source links caused by moves.
+   Completed locally; see its archived acceptance and API handoff. Dependencies: none. Owns `packages/editor`, moved source/tests, website entry/build/dependencies, root lockfile changes needed by extraction, and broken source links caused by moves.
 
 2. [02-extension-package.md](02-extension-package.md)
 

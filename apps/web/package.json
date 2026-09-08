@@ -9,16 +9,13 @@
     "deploy": "wrangler pages deploy dist --project-name foil --branch main",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
     "test:e2e": "playwright test",
     "test:e2e:install": "playwright install chromium webkit"
   },
   "dependencies": {
-    "buffer": "6.0.3",
-    "drand-client": "1.2.5",
+    "@foil/editor": "workspace:*",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "tlock-js": "^0.9.0"
+    "react-dom": "^18.3.1"
   },
   "devDependencies": {
     "@foil/typescript-config": "workspace:*",
@@ -27,10 +24,7 @@
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "5.2.0",
-    "@vitest/ui": "4.1.11",
-    "jsdom": "^29.1.1",
     "typescript": "^5.6.3",
-    "vite": "7.3.6",
-    "vitest": "4.1.11"
+    "vite": "7.3.6"
   }
 }

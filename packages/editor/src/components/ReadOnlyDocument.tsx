@@ -15,6 +15,8 @@ export interface ReadOnlyDocumentProps {
   viewingLabel?: string;
   /** Host-provided actions, e.g. the website's explicit fork button. */
   viewingActions?: ReactNode;
+  /** Optional host controls beside Settings/Share; standalone files omit them. */
+  headerActions?: ReactNode;
 }
 
 interface ThreadPosition { id: string; top: number; anchored: boolean }
@@ -22,7 +24,7 @@ const MOBILE_QUERY = '(max-width: 1100px)';
 
 export function ReadOnlyDocument({
   doc, settings, onShare, onSettings, onHelp,
-  viewingLabel = 'Read-only preview', viewingActions,
+  viewingLabel = 'Read-only preview', viewingActions, headerActions,
 }: ReadOnlyDocumentProps) {
   const { editorWrapStyle, canvasStyle } = useReadingSettings(settings);
   const [activeAnchorId, setActiveAnchorId] = useState<string | null>(null);
@@ -178,6 +180,7 @@ export function ReadOnlyDocument({
             ><IconComment />{doc.comments.length}</button>
           )}
           <div className="topbar-actions">
+            {headerActions}
             {onSettings && <button type="button" className="btn btn-icon" onClick={onSettings} title="Settings" aria-label="Settings"><IconSettings /></button>}
             {onShare && <button type="button" className="btn btn-ghost-bordered" onClick={onShare}><IconShare /> Share</button>}
           </div>
