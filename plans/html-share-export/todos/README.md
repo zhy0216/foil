@@ -18,7 +18,7 @@ default_agent: codex
 | [02-readonly-preview.md](done/02-readonly-preview.md) | P1 | hard | codex，继承默认 | gpt-6-astra / max | 已完成：网站/文件共用预览，保留评论与设置，移除文件编辑依赖 |
 | [03-standalone-html.md](done/03-standalone-html.md) | P1 | hard | codex，继承默认 | gpt-6-astra / max | 已完成，待集成：独立阅读入口、单文件构建/CSP、组装/下载与自身资源 API；实际 file 验证见归档 |
 | [04-share-export.md](done/04-share-export.md) | P1 | medium | codex，继承默认 | gpt-6-astra / xhigh | 已完成，待集成：Share 下载与文件再次分享；619 项单测、12 项网站 e2e 和实际双浏览器离线下载链路通过 |
-| [05-file-regressions.md](05-file-regressions.md) | P1 | medium | codex，继承默认 | gpt-6-astra / xhigh | 真实下载/file 打开浏览器回归、四种模式与使用文档 |
+| [05-file-regressions.md](done/05-file-regressions.md) | P1 | medium | codex，继承默认 | gpt-6-astra / xhigh | 已完成，待集成：正式四模式真实下载/file 矩阵与文档；619 单测、默认/root 各 28 项双浏览器 e2e 通过 |
 
 ## 文件
 
@@ -40,9 +40,9 @@ default_agent: codex
 
    依赖 03-standalone-html（传递依赖 01、02），基于已合入的 `65c044c` 完成。Share UI、网站/文件出口注入一起交付；619 项单测、12 项网站 e2e、Chromium/WebKit 普通/密码真实下载与离线再次导出，以及实际超 URL 上限文件导出通过。最终 API、按钮/错误定位、命名与 05 交接见归档。
 
-5. `05-file-regressions.md`
+5. [05-file-regressions.md](done/05-file-regressions.md) — 已完成，待协调器集成
 
-   依赖 04-share-export（传递依赖 01、02、03）。验证最终构建和真实用户下载流程。
+   依赖 04-share-export（传递依赖 01、02、03），基于 `f7f1f8f` 完成。新增 16 项 Chromium/WebKit 正式 file 验收；完整默认与根路径各 28/28 通过，单测 619/619。README/Help/CLAUDE 已同步；精确复跑命令、逐条证据、体积与环境事项见本项归档。
 
 执行顺序：`01 + 02` 并行 → `03` → `04` → `05`。每项一个独立 worktree、一个最终 commit。遇到同文件修改按依赖串行处理；不要同时执行其他 plans 的历史队列。
 

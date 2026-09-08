@@ -5,12 +5,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-bun install
+bun install --frozen-lockfile
 bun run dev        # vite dev server (port 5173)
 bun run build      # tsc -b, then vite build → static dist/
 bun run preview    # serve the built bundle
 bun run test       # vitest run (jsdom)
 bun run typecheck  # tsc --noEmit
+bun run test:e2e --workers=2 # production build, then Chromium/WebKit website + real file tests
 ```
 
 Run a single test file or by name:
@@ -20,11 +21,11 @@ bunx vitest run src/lib/url-codec.test.ts
 bunx vitest run -t "round-trips"
 ```
 
-Tests live next to their subject (`src/lib/*.test.ts`) and currently cover `url-codec` and `markdown` — the two pieces with tricky invariants.
+Unit/component tests live next to their subjects in `src/`. Browser tests live in `tests/e2e/`. Run typecheck, the full unit suite, then build/e2e sequentially: concurrent builds can starve the real 600k-round KDF tests of their five-second budget. After the default e2e suite completes, validate the root variant with `bun run build --base /` followed by `FOIL_E2E_BASE=/ bunx playwright test --workers=2`. Never build both variants into `dist/` concurrently. `FOIL_E2E_PORT` selects an alternate preview port (default 4173).
 
 ## What this is
 
-A markdown editor with **no backend**. The document *is* the URL: there is no server, database, or API. Local docs live in `localStorage`; sharing serializes the doc into the URL fragment (`#...`), which browsers never transmit. The static `dist/` is the entire app. Read `README.md` for the privacy/threat model — it is accurate and worth trusting.
+A markdown editor with **no backend**. Local docs live in `localStorage`; sharing serializes a snapshot into a URL fragment (`#...`), which browsers never transmit, or a self-contained HTML file. The static `dist/` is the entire website. Read `README.md` for the privacy/threat model.
 
 Deployment target is GitHub Pages under a subpath, so `vite.config.ts` sets `base: '/foil/'`. A strict CSP is injected into `index.html` **at build time only** (`cspPlugin` in `vite.config.ts`); dev skips it so HMR works. If you add any external fetch, you must whitelist its origin in that CSP's `connect-src` — the drand endpoints are already listed there for time capsules.
 
@@ -57,7 +58,17 @@ Comments are **not** stored as offsets. Each `CommentThread` keeps the quoted te
 | `#td=` | gzip → tlock → base64url |
 | `#te=` | gzip → tlock → AES-GCM → base64url |
 
-Key facts: the **password (AES-GCM-256, PBKDF2-SHA256 600k rounds) is always the outermost layer**, so it hides whether a link is even a capsule. For `#te=` that single AES layer also gates the password — it's the only way to reach the tlock ciphertext, so opening the capsule needs both the password and the unlock time (see `buildEnvelope`/`openTimeCapsule`). Time-lock uses the drand "quicknet" beacon; `tlock-js`/`drand-client` are **dynamically imported** so they stay out of the main bundle until you seal or open a capsule. `roundAtUnix`/`unixMsAtRound` are pure local math — picking the unlock round needs no network; only decryption does.
+Key facts: the **password (AES-GCM-256, PBKDF2-SHA256 600k rounds) is always the outermost layer**, hiding the unlock round and tlock envelope. For `#te=` that single AES layer gates access to the tlock ciphertext, so opening the capsule needs both the password and the published unlock signature (see `buildEnvelope`/`openTimeCapsule`). Time-lock uses the drand "quicknet" beacon; `tlock-js`/`drand-client` are **dynamically imported** on the website so they stay out of the main bundle until you seal or open a capsule. `roundAtUnix`/`unixMsAtRound` are pure local math; sealing fetches and verifies chain information, while decryption also fetches the round signature.
+
+### Standalone HTML sharing
+
+- `encodeHtmlPayload` / `decodeHtmlPayload` reuse the four codec schemes with a separate bounded file transport budget. URL's 256 KiB cap remains unchanged; file decoding retains the 4 MiB layer, 8 MiB cumulative and document-schema limits. `html-share-format.ts` validates `{ format: 'foil-share', version: 1, payload, shareBaseUrl? }`.
+- `Preview` decorates Markdown without importing `Editor`. `ReadOnlyDocument` composes it with read-only threads, all-comment navigation, mobile drawer, statistics and host actions. `useReadingSettings` applies presentation. Website previews supply **Edit anyway**; standalone files supply only Share/Settings/Help.
+- `src/standalone/main.tsx` / `StandaloneApp.tsx` read fixed embedded data once, then manage password, time gate, cancellation, error/retry and preview states. Documents never enter local storage; only preferences attempt storage, with an in-memory fallback. `resources.ts` reads the fixed data/script/style blocks, not unlocked DOM.
+- `build/standalone.ts`, wired into Vite, builds a Buffer bootstrap IIFE before the reader IIFE and collects all CSS. Build assertions reject editor, library, website resource-loader and external-chunk dependencies. The emitted `foil-standalone.js` is a resource-string module, not a second app launched on the website. Development serves a fresh on-demand build at the same base-relative path.
+- Only the website imports `standalone-runtime-loader.ts`, and only an HTML export requests the resource module. `ShareModal` takes `shareBaseUrl` and `exportHtml(state, options, shareBaseUrl)`; the callback returns `{ html, filename }`. The modal handles snapshot/expiry checks and actual Blob download independently of URL-generation success. The file callback reuses its fixed runtime/style blocks so re-export needs no server and cannot recursively embed the template.
+- `html-export.ts` safely assembles non-executable JSON, a generic protected filename/title and a CSP hash of the final inline script bytes. File CSP allows only drand connections; website CSP remains `script-src 'self'`. No unsafe browser flags are needed. Ordinary/password files work offline; time capsules retain the drand dependency. New sharing sessions require protection to be selected again.
+- `tests/e2e/html-export.spec.ts` clicks real Share downloads, saves to test output, navigates fresh recipient contexts to `file://`, refreshes and re-exports. Fixed quicknet/beacon fixtures are shared with website tests. All HTTP(S) is intercepted, with CORS-enabled drand fixtures only for capsules; do not use `page.setContent` or WebKit's offline switch as a substitute for this path. The latter rejects even simple static file navigation. Run this file after a matching build with `bunx playwright test tests/e2e/html-export.spec.ts --workers=2`.
 
 ### App state & persistence
 
@@ -71,6 +82,6 @@ Key facts: the **password (AES-GCM-256, PBKDF2-SHA256 600k rounds) is always the
 
 ## Conventions
 
-- Stack is React 18 + TypeScript + Vite, strict mode. The only non-React runtime dep is `tlock-js`.
+- Stack is React 18 + TypeScript + Vite, strict mode. Crypto runtime dependencies are `buffer`, `tlock-js` and `drand-client`.
 - DOM-level editor logic is plain TypeScript in `lib/` (testable without React); React components in `components/` stay thin and delegate to it.
 - When touching the editor, prefer editing the markdown string and re-rendering over mutating the live DOM — that is the model the whole component assumes.

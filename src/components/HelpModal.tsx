@@ -31,16 +31,17 @@ export function HelpModal({ open, onClose }: Props) {
         <div className="settings-section">
           <div className="settings-label">Where your data lives</div>
           <p className="help-text">
-            Each document is a JSON blob in <code>localStorage</code> under{' '}
-            <code>foil_doc_&lt;id&gt;</code>. Your theme, font, and display name stay local too.
-            Clearing site data wipes everything. Nothing you type is sent anywhere.
+            Documents you edit on the website stay in this browser's local library. Clearing
+            site data removes that library. Shared HTML files keep their document in the file
+            and do not add it to a local library. Reading preferences stay on this device;
+            if storage is unavailable, you can still read and adjust them for this session.
           </p>
         </div>
 
         <div className="settings-section">
           <div className="settings-label">How sharing works</div>
           <p className="help-text">
-            When you share a doc, Foil gzips it, base64url-encodes it, and writes the result after{' '}
+            A share link contains a compressed snapshot of the title, text and comments after{' '}
             <code>#</code> in the URL — for example <code>foil.example/#d=H4sIAAA…</code>. Browsers,
             by design, never send the part after <code>#</code> to servers, so the host that serves
             Foil cannot see what you shared. When a recipient opens the link, Foil decodes the
@@ -49,19 +50,42 @@ export function HelpModal({ open, onClose }: Props) {
         </div>
 
         <div className="settings-section">
+          <div className="settings-label">Share an HTML file</div>
+          <p className="help-text">
+            Open Share, choose any password or time lock, then select <strong>Export HTML</strong>.
+            Send the downloaded .html file directly. The recipient saves it and opens it in a
+            current browser with JavaScript enabled. The reading program and styles are included:
+            ordinary and password-protected files work offline. Creating or opening time capsules
+            needs a connection to drand, even when the unlock date has passed.
+          </p>
+          <p className="help-text">
+            Files provide a read-only preview with the title, text, all comments, comment
+            navigation, reading settings and sharing. They have no editor or comment-writing
+            controls. A snapshot never follows later author edits; changing reading preferences
+            does not change the saved document. Share can export another file or create a link
+            to the source website. Choose protection again each time you share.
+          </p>
+          <p className="help-text">
+            Local files are tested in Chromium and WebKit. Mail and chat attachment previews
+            may not run the reading program; download the attachment and open it in your browser.
+          </p>
+        </div>
+
+        <div className="settings-section">
           <div className="settings-label">Password encryption</div>
           <p className="help-text">
-            A password-protected link (<code>#e=</code>) is encrypted with AES-GCM-256. The key is
+            A password-protected link or HTML file (<code>#e=</code>) is encrypted with AES-GCM-256. The key is
             derived from your password using PBKDF2-SHA256 with <strong>600,000 rounds</strong>,
             with a random salt and IV per share. Only the ciphertext, salt, and IV end up in the
-            URL — never the password itself.
+            link or file — never the password itself. Protected files also hide the title and
+            comments until unlocked. Give the recipient the password separately.
           </p>
         </div>
 
         <div className="settings-section">
           <div className="settings-label">Time capsule</div>
           <p className="help-text">
-            A time capsule link (<code>#td=</code>) uses{' '}
+            A time capsule link or HTML file (<code>#td=</code>) uses{' '}
             <a href="https://drand.love" target="_blank" rel="noopener noreferrer">
               drand
             </a>{' '}

@@ -1,5 +1,10 @@
 import { defineConfig, devices } from '@playwright/test';
 
+// Build first with the matching base; never rebuild two variants into dist in parallel.
+const basePath = process.env.FOIL_E2E_BASE === '/' ? '/' : '/foil/';
+const port = Number(process.env.FOIL_E2E_PORT || 4173);
+const baseURL = `http://127.0.0.1:${port}${basePath}`;
+
 export default defineConfig({
   testDir: './tests/e2e',
   fullyParallel: true,
@@ -9,7 +14,7 @@ export default defineConfig({
   reporter: [['list'], ['html', { open: 'never' }]],
   outputDir: 'test-results',
   use: {
-    baseURL: 'http://127.0.0.1:4173/foil/',
+    baseURL,
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     serviceWorkers: 'block',
@@ -19,8 +24,8 @@ export default defineConfig({
     { name: 'webkit', use: { ...devices['Desktop Safari'] } },
   ],
   webServer: {
-    command: './node_modules/.bin/vite preview --host 127.0.0.1 --port 4173 --strictPort',
-    url: 'http://127.0.0.1:4173/foil/',
+    command: `./node_modules/.bin/vite preview --base ${basePath} --host 127.0.0.1 --port ${port} --strictPort`,
+    url: baseURL,
     reuseExistingServer: false,
     timeout: 30_000,
     gracefulShutdown: { signal: 'SIGTERM', timeout: 5_000 },
