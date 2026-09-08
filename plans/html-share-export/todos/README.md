@@ -15,7 +15,7 @@ default_agent: codex
 | 文件 | 优先级 | 难度 | agent | 模型 / Codex 推理强度 | 说明 |
 | --- | --- | --- | --- | --- | --- |
 | [01-html-payload.md](done/01-html-payload.md) | P1 | hard | codex，继承默认 | gpt-6-astra / max | 已完成，待集成：共用四种密码学模式，有界文件 payload 和版本格式；验收/API 见完成记录 |
-| [02-readonly-preview.md](02-readonly-preview.md) | P1 | hard | codex，继承默认 | gpt-6-astra / max | 网站/文件共用预览，保留评论与设置，移除文件编辑依赖 |
+| [02-readonly-preview.md](done/02-readonly-preview.md) | P1 | hard | codex，继承默认 | gpt-6-astra / max | 已完成：网站/文件共用预览，保留评论与设置，移除文件编辑依赖 |
 | [03-standalone-html.md](03-standalone-html.md) | P1 | hard | codex，继承默认 | gpt-6-astra / max | 独立阅读入口、全部资源内嵌、文件 CSP 与导出组装 |
 | [04-share-export.md](04-share-export.md) | P1 | medium | codex，继承默认 | gpt-6-astra / xhigh | Share 下载 HTML，保护选项/快照一致，文件可再次分享 |
 | [05-file-regressions.md](05-file-regressions.md) | P1 | medium | codex，继承默认 | gpt-6-astra / xhigh | 真实下载/file 打开浏览器回归、四种模式与使用文档 |
@@ -26,9 +26,11 @@ default_agent: codex
 
    已完成，待协调器集成。依赖：无。可与 02 并行；只拥有 codec、文件格式及其测试。完成记录提供 03/04 所需的真实 API、限制、错误语义和验证结果。
 
-2. `02-readonly-preview.md`
+2. [02-readonly-preview.md](done/02-readonly-preview.md) — 已完成
 
    依赖：无。可与 01 并行；拥有阅读 UI、App 阅读分支、Thread 与阅读样式，不能改 codec。
+
+   已交付 Preview / ReadOnlyDocument / useReadingSettings，实际 API 与逐项验收见归档文件。rebase 到 c5338d6 后，类型检查、531 项单测、生产构建与 Chromium/WebKit 12 项 e2e 通过；独立阶段的首次 e2e 端口冲突及重跑结果仍保留记录。
 
 3. `03-standalone-html.md`
 

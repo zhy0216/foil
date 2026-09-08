@@ -322,15 +322,59 @@ input, textarea { font: inherit; color: inherit; }
 .editor {
   outline: 0;
   box-shadow: none;
-  font-family: var(--font-prose);
-  font-size: 19px;
-  line-height: 1.7;
+  font-family: var(--prose-font, var(--font-prose));
+  font-size: var(--prose-size, 19px);
+  line-height: var(--prose-leading, 1.7);
   color: var(--fg);
   caret-color: var(--accent);
   word-wrap: break-word;
   -webkit-user-modify: read-write-plaintext-only;
 }
 .editor.readonly { -webkit-user-modify: read-only; }
+
+/* Shared reading view; the editor's decoration classes remain compatible. */
+.document-loading { padding: 32px; color: var(--fg-muted); }
+.readonly-document { display: block; }
+.readonly-content { min-height: 100vh; display: grid; grid-template-rows: auto 1fr; }
+.readonly-title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: var(--fw-medium);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.readonly-document .canvas {
+  grid-template-columns: minmax(0, var(--editor-width));
+  justify-content: center;
+}
+.readonly-document .canvas.has-comments {
+  grid-template-columns: minmax(0, var(--editor-width)) minmax(240px, 320px);
+}
+.readonly-document .editor-wrap { grid-column: 1; }
+.readonly-document .gutter-comments { grid-column: 2; position: relative; }
+.preview { white-space: pre-wrap; user-select: text; -webkit-user-select: text; }
+.editor.preview .ln { min-height: calc(1em * var(--prose-leading, 1.7)); }
+.preview .ln.p { font-size: inherit; line-height: inherit; }
+.preview .anchor-hl { cursor: pointer; scroll-margin-block: 120px; }
+.readonly-thread-position { position: absolute; width: 100%; }
+.readonly-document .comment-thread.readonly { position: static; margin: 0; }
+.comment-thread.readonly .anchor {
+  display: block;
+  width: 100%;
+  text-align: left;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  -webkit-line-clamp: unset;
+}
+.unlocated-comment { margin: 6px 0 0; color: var(--fg-subtle); font-size: var(--text-xs); }
+.readonly-comments-heading { margin: 0 40px 16px 0; font-size: var(--text-lg); }
+.readonly-thread-item + .readonly-thread-item { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border); }
+@media (max-width: 1100px) {
+  .readonly-document .canvas.has-comments { grid-template-columns: minmax(0, var(--editor-width)); }
+  .readonly-document .mobile-thread-sheet { scroll-padding-block: 60px 16px; }
+}
 
 /* line wrappers */
 .editor .ln { display: block; min-height: 1.7em; }

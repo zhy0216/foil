@@ -1,15 +1,24 @@
 import { useState } from 'react';
 import type { CommentThread } from '../types';
 
-interface ThreadProps {
+interface ThreadBaseProps {
   thread: CommentThread & { top?: number };
   active: boolean;
   onActivate: (id: string) => void;
+  mode?: 'gutter' | 'sheet';
+}
+
+type ThreadProps = ThreadBaseProps & ({
+  readOnly: true;
+  onReply?: never;
+  onDelete?: never;
+  defaultName?: never;
+} | {
+  readOnly?: false;
   onReply: (threadId: string, body: string, author: string) => void;
   onDelete: (threadId: string) => void;
   defaultName: string;
-  mode?: 'gutter' | 'sheet';
-}
+});
 
 function fmt(ts: number): string {
   const d = new Date(ts);
@@ -28,6 +37,7 @@ export function Thread({
   onReply,
   onDelete,
   defaultName,
+  readOnly = false,
   mode = 'gutter',
 }: ThreadProps) {
   const [replying, setReplying] = useState(false);
@@ -36,19 +46,23 @@ export function Thread({
 
   const submit = (e?: React.MouseEvent | React.KeyboardEvent) => {
     e?.stopPropagation();
-    if (!body.trim()) return;
-    onReply(thread.id, body, name || 'Anonymous');
+    if (readOnly || !body.trim()) return;
+    onReply?.(thread.id, body, name || 'Anonymous');
     setBody('');
     setReplying(false);
   };
 
   return (
     <div
-      className={'comment-thread' + (active ? ' active' : '')}
+      className={'comment-thread' + (active ? ' active' : '') + (readOnly ? ' readonly' : '')}
       style={mode === 'gutter' ? { top: thread.top } : undefined}
-      onClick={() => onActivate(thread.id)}
+      onClick={readOnly ? undefined : () => onActivate(thread.id)}
     >
-      <div className="anchor">"{thread.quote}"</div>
+      {readOnly ? (
+        <button type="button" className="anchor" onClick={() => onActivate(thread.id)}>
+          "{thread.quote}"
+        </button>
+      ) : <div className="anchor">"{thread.quote}"</div>}
       {thread.replies.map((r, i) => (
         <div key={r.id} className={i === 0 ? '' : 'reply'}>
           <div className="meta">
@@ -58,7 +72,7 @@ export function Thread({
           <div className="body">{r.body}</div>
         </div>
       ))}
-      {replying ? (
+      {!readOnly && (replying ? (
         <div className="reply-input" style={{ flexDirection: 'column' }}>
           <input
             className="name-input"
@@ -117,13 +131,13 @@ export function Thread({
           <button
             onClick={(e) => {
               e.stopPropagation();
-              onDelete(thread.id);
+              onDelete?.(thread.id);
             }}
           >
             Delete
           </button>
         </div>
-      )}
+      ))}
     </div>
   );
 }

@@ -4,7 +4,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type CSSProperties,
 } from 'react';
 import { Composer } from './components/Composer';
 import { DocSwitcher } from './components/DocSwitcher';
@@ -20,10 +19,12 @@ import {
 } from './components/Icons';
 import { HelpModal } from './components/HelpModal';
 import { PasswordPromptModal } from './components/PasswordPromptModal';
+import { ReadOnlyDocument } from './components/ReadOnlyDocument';
 import { SettingsModal } from './components/SettingsModal';
 import { ShareModal } from './components/ShareModal';
 import { Thread } from './components/Thread';
 import { TimeCapsuleUnlock } from './components/TimeCapsuleUnlock';
+import { useReadingSettings } from './hooks/useReadingSettings';
 import {
   clearCurrentId,
   createDocResult,
@@ -40,12 +41,8 @@ import {
   type StorageFailure,
 } from './lib/doc-store';
 import {
-  ACCENT_MAP,
   DEFAULT_SETTINGS,
-  EDITOR_WIDTHS,
   parseSettings,
-  PROSE_FONT_MAP,
-  PROSE_SIZES,
   isTheme,
 } from './lib/settings-config';
 import { decodeUrl, type TimeCapsuleEnvelope } from './lib/url-codec';
@@ -133,44 +130,6 @@ export default function App() {
   const [initialPreferences] = useState<InitialPreferences>(loadInitialPreferences);
   const [settings, setSettings] = useState<Settings>(initialPreferences.settings);
 
-  // Theme follow-OS
-  useEffect(() => {
-    const apply = () => {
-      const t =
-        settings.theme === 'auto'
-          ? matchMedia('(prefers-color-scheme: light)').matches
-            ? 'light'
-            : 'dark'
-          : settings.theme;
-      document.documentElement.setAttribute('data-theme', t);
-    };
-    apply();
-    if (settings.theme === 'auto') {
-      const mq = matchMedia('(prefers-color-scheme: light)');
-      const handler = () => apply();
-      mq.addEventListener('change', handler);
-      return () => mq.removeEventListener('change', handler);
-    }
-  }, [settings.theme]);
-
-  // Accent overrides
-  useEffect(() => {
-    const root = document.documentElement;
-    const keys = [
-      '--accent',
-      '--accent-hover',
-      '--accent-hi',
-      '--accent-lo',
-      '--link',
-      '--link-hover',
-    ];
-    keys.forEach((k) => root.style.removeProperty(k));
-    const a = ACCENT_MAP[settings.accent];
-    if (a?.overrides) {
-      Object.entries(a.overrides).forEach(([k, v]) => root.style.setProperty(k, v));
-    }
-  }, [settings.accent]);
-
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [title, setTitle] = useState('Untitled document');
@@ -187,6 +146,9 @@ export default function App() {
   const [toast, setToast] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<'saved' | 'saving' | 'unsaved' | 'error'>('unsaved');
   const [readOnly, setReadOnly] = useState(false);
+  const { editorWrapStyle, canvasStyle } = useReadingSettings(settings, !readOnly);
+  // StrictMode replays mount effects after the address-bar fragment is cleared.
+  const [initialHash] = useState(() => window.location.hash);
   const [currentId, setCurrentIdState] = useState<string | null>(null);
   const [docs, setDocs] = useState<DocMeta[]>([]);
   const [bootstrapped, setBootstrapped] = useState(false);
@@ -396,12 +358,14 @@ export default function App() {
 
   // Bootstrap: load from URL hash if present (read-only), otherwise from doc-store
   useEffect(() => {
-    const hash = window.location.hash;
+    const hash = initialHash;
     if (hash && hash.length > 2) {
+      let cancelled = false;
       // Clear the URL immediately so the encoded blob isn't visible in the address bar
       history.replaceState(null, '', window.location.pathname);
       (async () => {
         const res = await decodeUrl(hash);
+        if (cancelled) return;
         if (res.encrypted) {
           setPwPrompt({ hash, error: null });
           setReadOnly(true);
@@ -425,7 +389,7 @@ export default function App() {
         refreshDocs();
         setBootstrapped(true);
       })();
-      return;
+      return () => { cancelled = true; };
     }
     const idResult = readCurrentId();
     if (!idResult.ok) reportStorageError(idResult.error);
@@ -553,7 +517,7 @@ export default function App() {
       }
     });
     setAnchorPositions(positions);
-  }, [comments, markdown, activeAnchorId]);
+  }, [comments, markdown, activeAnchorId, readOnly, bootstrapped]);
 
   const stackedThreads = useMemo(() => {
     const items = comments
@@ -691,16 +655,6 @@ export default function App() {
     document.execCommand('insertText', false, `[${text}](url)`);
   }
 
-  const editorWrapStyle: CSSProperties & Record<string, string> = {
-    '--prose-font': PROSE_FONT_MAP[settings.proseFont] || PROSE_FONT_MAP.serif,
-    '--prose-size': (PROSE_SIZES[settings.proseSize] || PROSE_SIZES.default) + 'px',
-    '--prose-leading': settings.density === 'compact' ? '1.55' : '1.7',
-  };
-
-  const canvasStyle: CSSProperties & Record<string, string> = {
-    '--editor-width': EDITOR_WIDTHS[settings.editorWidth] || EDITOR_WIDTHS.default,
-  };
-
   const saveLabel = readOnly
     ? '● shared view'
     : saveState === 'saving'
@@ -708,6 +662,10 @@ export default function App() {
       : saveState === 'saved'
         ? '● saved'
         : '● not saved';
+
+  if (!bootstrapped) {
+    return <div className="document-loading" role="status">Opening document…</div>;
+  }
 
   // While a password prompt or time capsule is awaiting unlock, render only
   // the modal — the empty editor frame and "Untitled document" chrome behind
@@ -770,6 +728,51 @@ export default function App() {
     );
   }
 
+  const modals = (
+    <>
+      <SettingsModal
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        settings={settings}
+        onChange={setSettings}
+        onReset={() => setSettings({ ...DEFAULT_SETTINGS })}
+      />
+
+      <ShareModal
+        open={shareOpen}
+        onClose={() => setShareOpen(false)}
+        getState={getState}
+        onToast={showToast}
+        onLearnMore={() => setHelpOpen(true)}
+      />
+
+      <HelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
+
+      {toast && <div className="toast">{toast}</div>}
+    </>
+  );
+
+  if (readOnly) {
+    return (
+      <>
+        <ReadOnlyDocument
+          doc={{ md: markdown, comments, title }}
+          settings={settings}
+          onShare={() => setShareOpen(true)}
+          onSettings={() => setSettingsOpen(true)}
+          onHelp={() => setHelpOpen(true)}
+          viewingLabel="Viewing shared link"
+          viewingActions={(
+            <button className="btn" style={{ padding: '0 6px', fontSize: 11, color: 'inherit' }} onClick={handleEditShared}>
+              Edit anyway
+            </button>
+          )}
+        />
+        {modals}
+      </>
+    );
+  }
+
   return (
     <div className="app">
       <header className="topbar">
@@ -791,21 +794,6 @@ export default function App() {
           onNew={handleNewDoc}
           readOnly={readOnly}
         />
-        {readOnly && (
-          <span className="viewing-chip">
-            <span className="dot" />
-            {tcEnvelope
-              ? 'Viewing time capsule'
-              : `Viewing shared ${pwPrompt ? 'encrypted ' : ''}link`}
-            <button
-              className="btn"
-              style={{ padding: '0 6px', fontSize: 11, color: 'inherit' }}
-              onClick={handleEditShared}
-            >
-              Edit anyway
-            </button>
-          </span>
-        )}
         {comments.length > 0 && (
           <span className="count-pill">
             <IconComment />
@@ -829,7 +817,6 @@ export default function App() {
 
       <main className="canvas" style={canvasStyle}>
         <div className="editor-wrap" ref={editorWrapRef} style={editorWrapStyle}>
-          <style>{`.editor { font-family: var(--prose-font); font-size: var(--prose-size, 19px); line-height: var(--prose-leading, 1.7); }`}</style>
           <Editor
             ref={editorRef}
             initialMarkdown={markdown}
@@ -970,23 +957,7 @@ export default function App() {
           );
         })()}
 
-      <SettingsModal
-        open={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
-        settings={settings}
-        onChange={setSettings}
-        onReset={() => setSettings({ ...DEFAULT_SETTINGS })}
-      />
-
-      <ShareModal
-        open={shareOpen}
-        onClose={() => setShareOpen(false)}
-        getState={getState}
-        onToast={showToast}
-        onLearnMore={() => setHelpOpen(true)}
-      />
-
-      <HelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
+      {modals}
 
       <div className="statusbar">
         <span>{stats.words.toLocaleString()} words</span>
@@ -1026,8 +997,6 @@ export default function App() {
           </span>
         </div>
       </div>
-
-      {toast && <div className="toast">{toast}</div>}
     </div>
   );
 }
