@@ -3,16 +3,16 @@ import type { Page } from '@playwright/test';
 import { test, expect } from './fixtures';
 import { snapshot } from './helpers';
 // Test-only reuse: the task-07 fixed sample remains owned by the website suite.
-import { SAMPLE_COMMENTS, SAMPLE_DOC, SAMPLE_MD, SAMPLE_SENTINELS, visualBaselineDir } from '../../../web/tests/e2e/helpers/samples';
+import { SAMPLE_COMMENTS, SAMPLE_DOC, SAMPLE_MD, visualBaselineDir } from '../../../web/tests/e2e/helpers/samples';
 
 const BASELINE = visualBaselineDir(import.meta.url);
 const shot = (page: Page, name: string) => page.screenshot({ path: join(BASELINE, name) });
 
 /* Task 07 host coverage: the same fixed sample renders correctly in the
-   packaged extension editor and its local Read view, offline, with the
-   recipient-independent personal settings applied. */
+   packaged extension editor, offline, with the recipient-independent
+   personal settings applied. */
 
-test('packaged extension renders the full sample with settings, comments and Read view offline', async ({ extension }) => {
+test('packaged extension renders the full sample with settings and comments offline', async ({ extension }) => {
   const page = await extension.page();
   await page.evaluate(({ doc, comments }) => {
     localStorage.clear();
@@ -46,24 +46,6 @@ test('packaged extension renders the full sample with settings, comments and Rea
   }
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
   await shot(page, 'ext-editor.png');
-
-  // Local Read view: full content, TOC jumps without touching the URL hash.
-  await page.getByRole('button', { name: 'Read', exact: true }).click();
-  const reading = page.locator('.readonly-document .reading-preview');
-  await expect(reading).toBeVisible();
-  const text = await page.locator('.readonly-document').innerText();
-  for (const sentinel of SAMPLE_SENTINELS) expect(text, sentinel).toContain(sentinel);
-  const entries = page.locator('.reading-toc nav a');
-  expect(await entries.count()).toBeGreaterThanOrEqual(3);
-  await entries.first().click();
-  expect(new URL(page.url()).hash).toBe('');
-  await expect(page.locator('.readonly-document .gutter-comments .comment-thread')).toHaveCount(SAMPLE_COMMENTS.length);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
-  await shot(page, 'ext-reading.png');
-
-  await page.locator('.readonly-document').getByRole('button', { name: 'Back to editing', exact: true }).click();
-  await expect(editor).toBeVisible();
-  expect(await snapshot(page)).toBe(SAMPLE_MD);
 
   // A phone-width window keeps the sample inside the viewport.
   await page.setViewportSize({ width: 375, height: 812 });

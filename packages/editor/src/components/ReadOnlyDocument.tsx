@@ -23,8 +23,6 @@ export interface ReadOnlyDocumentProps {
    *  invalid value falls back to the semantic Reading view. */
   readerView?: ReaderView;
   onReaderViewChange?: (view: ReaderView) => void;
-  /** Statusbar save-state text; shared views default to `● shared view`. */
-  statusLabel?: string;
 }
 
 const isReaderView = (value: unknown): value is ReaderView => value === 'reading' || value === 'source';
@@ -38,7 +36,7 @@ const MOBILE_QUERY = '(max-width: 1100px)';
 export function ReadOnlyDocument({
   doc, settings, onShare, onSettings, onHelp,
   viewingLabel = 'Read-only preview', viewingActions, headerActions,
-  readerView, onReaderViewChange, statusLabel = '● shared view',
+  readerView, onReaderViewChange,
 }: ReadOnlyDocumentProps) {
   const { editorWrapStyle, canvasStyle } = useReadingSettings(settings);
   const [activeAnchorId, setActiveAnchorId] = useState<string | null>(null);
@@ -292,7 +290,7 @@ export function ReadOnlyDocument({
           <div className="right">
             {onHelp && <button type="button" onClick={onHelp} aria-label="About Foil" title="About Foil" className="help-link"><IconHelp /></button>}
             <a href="https://github.com/zhy0216/foil" target="_blank" rel="noopener noreferrer" aria-label="GitHub repository" className="github-link">GitHub</a>
-            <span className="save-state">{statusLabel}</span>
+            <span className="save-state">● shared view</span>
           </div>
         </div>
       </div>

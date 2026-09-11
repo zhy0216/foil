@@ -167,9 +167,6 @@ export default function App({ shareBaseUrl, headerActions }: AppProps) {
   const [toast, setToast] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<'saved' | 'saving' | 'unsaved' | 'error'>('unsaved');
   const [readOnly, setReadOnly] = useState(false);
-  // Local Read/Write switch. Deliberately independent of `readOnly`, which
-  // stays tied to shared-link import, save suppression and forking.
-  const [localView, setLocalView] = useState<'write' | 'read'>('write');
   // Recipient-local reader preference; never written back into a share snapshot.
   const [readerView, setReaderView] = useState<ReaderView>(() => {
     const stored = readStorageItem('local', READER_VIEW_KEY);
@@ -294,7 +291,6 @@ export default function App({ shareBaseUrl, headerActions }: AppProps) {
       const currentResult = persistCurrentId(doc.id);
       setCurrentIdState(doc.id);
       setReadOnly(false);
-      setLocalView('write');
       setSaveState(persisted && currentResult.ok ? 'saved' : 'error');
       if (!currentResult.ok) reportStorageError(currentResult.error);
       if (!persisted) setSaveState('unsaved');
@@ -539,26 +535,6 @@ export default function App({ shareBaseUrl, headerActions }: AppProps) {
     showToast('Saved as a local document — your edits stay on this device');
   };
 
-  // Read/Write switching never marks the document dirty: the committed
-  // markdown state is the reading snapshot, and an active IME composition is
-  // ended by the Editor's own readOnly transition before the view swaps.
-  const enterReadView = useCallback(() => {
-    setComposer(null);
-    setSelection(null);
-    setLocalView('read');
-  }, []);
-  const previousLocalView = useRef(localView);
-  useEffect(() => {
-    const previous = previousLocalView.current;
-    previousLocalView.current = localView;
-    if (previous !== 'read' || localView !== 'write') return;
-    const editor = editorRef.current;
-    if (!editor) return;
-    // Restore the saved caret; a repaint with the same markdown commits no
-    // change and touches neither the undo history nor the dirty flag.
-    if (!editor.replaceSelection('')) editor.focus();
-  }, [localView]);
-
   // Anchor positions
   const [anchorPositions, setAnchorPositions] = useState<Record<string, number | null>>({});
   useEffect(() => {
@@ -578,8 +554,7 @@ export default function App({ shareBaseUrl, headerActions }: AppProps) {
       }
     });
     setAnchorPositions(positions);
-    // localView re-measures the gutter after the hidden editor is shown again.
-  }, [comments, markdown, activeAnchorId, readOnly, bootstrapped, localView]);
+  }, [comments, markdown, activeAnchorId, readOnly, bootstrapped]);
 
   const stackedThreads = useMemo(() => {
     const items = comments
@@ -841,33 +816,9 @@ export default function App({ shareBaseUrl, headerActions }: AppProps) {
     );
   }
 
-  // Local Read view: the same reading implementation as a shared link, with
-  // "Back to editing" instead of a fork. The editing tree stays mounted but
-  // hidden so markdown, comments, undo context and dirty/save state survive
-  // any number of switches.
-  const reading = localView === 'read';
   return (
     <>
-      {reading && (
-        <ReadOnlyDocument
-          doc={{ md: markdown, comments, title }}
-          settings={settings}
-          onShare={() => setShareOpen(true)}
-          onSettings={() => setSettingsOpen(true)}
-          onHelp={() => setHelpOpen(true)}
-          headerActions={headerActions}
-          readerView={readerView}
-          onReaderViewChange={changeReaderView}
-          viewingLabel="Reading local document"
-          viewingActions={(
-            <button className="btn" style={{ padding: '0 6px', fontSize: 11, color: 'inherit' }} onClick={() => setLocalView('write')}>
-              Back to editing
-            </button>
-          )}
-          statusLabel={saveLabel}
-        />
-      )}
-      <div className="app" style={reading ? { display: 'none' } : undefined}>
+      <div className="app">
       <header className="topbar">
         <Brand />
         <DocSwitcher
@@ -892,9 +843,6 @@ export default function App({ shareBaseUrl, headerActions }: AppProps) {
         )}
         <div className="topbar-actions">
           {headerActions}
-          <button className="btn btn-ghost-bordered" onClick={enterReadView}>
-            Read
-          </button>
           <button
             className="btn btn-icon"
             onClick={() => setSettingsOpen(true)}
@@ -919,7 +867,6 @@ export default function App({ shareBaseUrl, headerActions }: AppProps) {
               markDirty();
             }}
             onSelectionChange={setSelection}
-            readOnly={reading}
             anchors={comments}
             activeAnchorId={activeAnchorId}
             onAnchorClick={setActiveAnchorId}

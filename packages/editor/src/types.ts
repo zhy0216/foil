@@ -27,7 +27,7 @@ export type EditorWidth = 'narrow' | 'default' | 'wide';
 export type Density = 'comfortable' | 'compact';
 /** Surface of the document area only; UI chrome keeps its own colors. */
 export type ReadingStyle = 'standard' | 'paper';
-/** Reader-side view of a shared or local-reading document. Never part of the
+/** Reader-side view of a shared document. Never part of the
  *  shared snapshot; each recipient stores it locally and defaults to Reading. */
 export type ReaderView = 'reading' | 'source';
 

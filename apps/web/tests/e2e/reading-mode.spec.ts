@@ -3,8 +3,8 @@ import { expect, test, type Browser, type BrowserContext, type Page } from '@pla
 test.use({ timezoneId: 'UTC' });
 
 /* Task 04 host-level acceptance: Reading is the default official reading
-   view, the TOC never rewrites the share fragment, local Read/Write keeps
-   the document and caret, and the reader-view preference stays local. */
+   view, the TOC never rewrites the share fragment, shared views offer only
+   the explicit fork, and the reader-view preference stays local. */
 
 const FILLER = Array.from({ length: 24 }, (_, i) => `Filler paragraph ${i} 填充段落 to force real scrolling.`).join(' ');
 
@@ -188,34 +188,11 @@ test('documents below the heading threshold show no fixed navigation and keep a 
   }
 });
 
-test('local Read/Write switching keeps content, caret and saves; shared views offer no Write entry', async ({ page, context, browser, baseURL }) => {
+test('the editing toolbar has no reading entry; shared views offer only the explicit fork', async ({ page, context, browser, baseURL }) => {
   await seed(context, LOCAL);
   await page.goto('./');
   await expect(page.locator('.editor[contenteditable="true"]')).toBeVisible();
-  await page.locator('.editor').click();
-  await page.keyboard.press('Control+End');
-  await page.keyboard.type(' appended 中文');
-  await expect(page.locator('.save-state')).toHaveText('● saved', { timeout: 5_000 });
-  const rawBefore = await page.evaluate(() => localStorage.getItem('foil_doc_seed'));
-
-  await page.getByRole('button', { name: 'Read', exact: true }).click();
-  const reading = page.locator('.readonly-document');
-  await expect(reading).toBeVisible();
-  await expect(reading.locator('.reading-preview')).toContainText('appended 中文');
-  await expect(reading.getByRole('button', { name: 'Back to editing', exact: true })).toBeVisible();
-  // Two headings: no fixed navigation on the local read view either.
-  await expect(reading.locator('.reading-toc')).toHaveCount(0);
-  // Switching alone never saves and never dirties the document.
-  expect(await page.evaluate(() => localStorage.getItem('foil_doc_seed'))).toBe(rawBefore);
-
-  await reading.getByRole('button', { name: 'Back to editing', exact: true }).click();
-  await expect(page.locator('.editor[contenteditable="true"]')).toBeVisible();
-  await expect(page.locator('.readonly-document')).toHaveCount(0);
-  // The caret was restored at the end of the text: typing continues there.
-  await page.keyboard.type('X');
-  expect(await sourceSnapshot(page)).toContain('appended 中文X');
-  await expect(page.locator('.save-state')).toHaveText('● saved', { timeout: 5_000 });
-  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('foil_doc_seed')!).md)).toContain('appended 中文X');
+  await expect(page.getByRole('button', { name: 'Read', exact: true })).toHaveCount(0);
 
   // A shared link keeps only the explicit fork entry.
   const link = await shareLinkOf(page);
@@ -223,9 +200,12 @@ test('local Read/Write switching keeps content, caret and saves; shared views of
   try {
     await recipient.goto(link);
     await expect(recipient.locator('.reading-preview')).toBeVisible({ timeout: 15_000 });
-    await expect(recipient.getByRole('button', { name: 'Back to editing', exact: true })).toHaveCount(0);
     await expect(recipient.getByRole('button', { name: 'Read', exact: true })).toHaveCount(0);
     await expect(recipient.getByRole('button', { name: 'Edit anyway', exact: true })).toBeVisible();
+    await recipient.getByRole('button', { name: 'Edit anyway', exact: true }).click();
+    await expect(recipient.locator('.editor[contenteditable="true"]')).toBeVisible();
+    // The forked local document gains no reading switch either.
+    await expect(recipient.getByRole('button', { name: 'Read', exact: true })).toHaveCount(0);
     expect(external).toEqual([]);
   } finally {
     await recipientContext.close();

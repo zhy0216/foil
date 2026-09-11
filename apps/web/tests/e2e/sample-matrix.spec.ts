@@ -181,24 +181,13 @@ test('viewports 375/768/1280 and 200% zoom keep the sample readable and operable
     await expect(editor).toBeVisible();
     expect(await noPageOverflow(page), `editor ${width}px`).toBe(true);
 
-    // Key operations stay available: settings change density for real…
+    // Key operations stay available: settings change density for real.
     await page.getByRole('button', { name: 'Settings' }).click();
     await page.getByRole('radio', { name: 'Compact' }).click();
     await page.getByRole('button', { name: 'Done' }).click();
     await pollLineHeight(page).toBe(32.55);
-
-    // …and the local Read view renders the whole sample with its TOC.
-    await page.getByRole('button', { name: 'Read', exact: true }).click();
-    const reading = page.locator('.readonly-document .reading-preview');
-    await expect(reading).toBeVisible();
-    const text = await page.locator('.readonly-document').innerText();
-    for (const sentinel of SAMPLE_SENTINELS) expect(text, `${width}px: ${sentinel}`).toContain(sentinel);
-    await expect(page.locator('.reading-toc')).toBeVisible();
-    expect(await noPageOverflow(page), `reading ${width}px`).toBe(true);
-    await shot(page, `web-vp-${info.project.name}-${width}.png`);
-    await page.locator('.readonly-document').getByRole('button', { name: 'Back to editing', exact: true }).click();
-    await expect(editor).toBeVisible();
     expect(await snapshot(page)).toBe(SAMPLE_MD);
+    await shot(page, `web-vp-${info.project.name}-${width}.png`);
   }
 
   // 200% browser zoom ≙ half the CSS-pixel viewport at deviceScaleFactor 2.
@@ -213,8 +202,6 @@ test('viewports 375/768/1280 and 200% zoom keep the sample readable and operable
     await zoomPage.getByRole('radio', { name: 'Compact' }).click();
     await zoomPage.getByRole('button', { name: 'Done' }).click();
     await pollLineHeight(zoomPage).toBe(32.55);
-    await zoomPage.getByRole('button', { name: 'Read', exact: true }).click();
-    await expect(zoomPage.locator('.readonly-document .reading-preview')).toBeVisible();
     expect(await noPageOverflow(zoomPage)).toBe(true);
     await shot(zoomPage, `web-zoom200-${info.project.name}.png`);
   } finally {
