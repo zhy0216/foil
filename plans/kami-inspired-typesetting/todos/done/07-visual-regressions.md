@@ -39,3 +39,12 @@ bun run build
 ~~~
 
 任何断言失败都要诊断到根因；属于 01–04 范围内的小缺陷在本任务内修复并复验，超出范围的记录 blocker。`git diff --check` 通过。
+
+## 完成记录（任务分支 herdr/plan-kami-ts-07-visual-regressions，最终 commit 见分支头）
+
+- 执行：opencode，模型 `alibaba-token-plan-cn/qwen3.8-max`（协调会话实际下发）。
+- T1 固定样本：新增 `apps/web/tests/e2e/helpers/samples.ts`。`SAMPLE_MD` 覆盖中文长文、英文简报、中英混排、连续标题（### 连续标题 A/B）与重复标题（### 小节 Subsection ×2）、多层列表（ul 三层 + 任务）、长 URL（裸链 + 查询串）、长代码（含超长行）、GFM 表格、连续空行、emoji/ZWJ/组合字符/代理对；`SAMPLE_COMMENTS` 含单块定位、跨块、重叠一对、未定位共 5 线程。样本被网站 `sample-matrix.spec.ts`、扩展 `typography.spec.ts`（沿用既有窄测试导入路径）与独立 HTML 路径（导出 + `file://` 再打开/再导出）三宿主复用。未新增 packages/editor 单测：03/04 已有 736 项单测对嵌套/转义/实体/CRLF/emoji/表格与偏移、IME、undo 等价覆盖。
+- T2 断言与截图：`apps/web/tests/e2e/sample-matrix.spec.ts` 6 项 × chromium/webkit——编辑矩阵（6 字体 × 代表 size/density/width，字号/行高/字体栈/有序编号/原文回环/无横向溢出）、外观矩阵（standard/paper × light/dark × 5 accent）、视口 375/768/1280 与 200% 缩放（640×360 @ deviceScaleFactor 2，设置/Read/TOC 可用）、数据（CJK 输入、undo、锚点存活）、分享阅读（sentinel 全量、TOC 重复标题唯一 ID、跳转与 Reading/Source 切换不改 fragment、5 线程可达含未定位、375 抽屉）、文件导出（自包含断言、离线打开、设置生效、再导出、零网络请求）。扩展 `typography.spec.ts`：打包编辑器与本地 Read 视图离线渲染同一样本 + 375px。全部断言为行为型（计算样式/文本/溢出/URL），不做像素对照。截图基线（固定环境，每次运行重新生成，已忽略目录）：`apps/web/test-results/visual-baseline/`（web-editor/look/vp/zoom200/share-reading/share-source/file-reading 共 37 张/次）、`apps/extension/test-results/visual-baseline/`（ext-editor、ext-reading、ext-editor-375）。人工视觉对照审批为协调器/用户线下步骤，本记录只提供基线路径；自动化不读图。
+- 测试辅助根因修正（仅测试代码）：`helpers/html-export.ts` 的 `expectDocument`「无编辑控件」选择器排除 `disabled` 输入（阅读视图任务列表复选框为只读展示）；评论卡片过滤改用精确引文文本，重叠引文不再互配。
+- T3 校验（顺序执行）：`bun install --frozen-lockfile` ✓（232 installs，无变更）；`bun run typecheck` ✓（3 任务）；`bun run test` ✓（--force 新跑：editor 26 文件 736 通过、extension 5 文件 241 通过，KDF 未超时）；`bun run build` ✓；`bun run test:e2e` ✓（web 62 通过 = 原 50 + 新 6×2 项目；extension 28 通过 = 原 27 + 新 1）；`bunx --no-install turbo run build --filter=@foil/web -- --base /` ✓ + `FOIL_E2E_BASE=/ bun run --cwd apps/web test:e2e --workers=2` ✓ 62 通过；最终 `bun run build` 恢复 `/foil/`（index.html 引用 `/foil/assets/` 已确认）；`git diff --check` ✓。针对性先行运行：sample-matrix chromium 6/6、webkit 6/6，extension typography 1/1。
+- 已知限制：长代码行在阅读视图 `pre` 内横向滚动（页面无溢出，屏幕行为既有设计）；截图同名文件按引擎/运行覆盖，基线以最后一次运行为准；未定位评论在阅读视图可达、编辑 gutter 不列（01–04 既有行为，未改动）；视觉基线人工审批结论由协调器线下补充。

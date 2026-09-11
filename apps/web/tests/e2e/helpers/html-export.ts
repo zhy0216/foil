@@ -119,7 +119,8 @@ export async function expectDocument(page: Page, doc = DOC, website = false, sto
   // Official reading defaults to the semantic Reading view.
   await expect(page.locator('.reading-preview')).toBeVisible({ timeout: 30_000 });
   await expect(page.locator('.readonly-title')).toHaveText(doc.title);
-  await expect(page.locator('[contenteditable="true"], input:not([readonly]), textarea, .composer, .doc-switcher, .toolbar')).toHaveCount(0);
+  // Disabled inputs (read-only task-list checkboxes) display state only.
+  await expect(page.locator('[contenteditable="true"], input:not([readonly]):not([disabled]), textarea:not([readonly]):not([disabled]), .composer, .doc-switcher, .toolbar')).toHaveCount(0);
   // The Source toggle keeps the exact raw-markdown snapshot contract; the
   // reader returns to the default view for the assertions that follow.
   await page.getByRole('button', { name: 'Source', exact: true }).click();
@@ -140,7 +141,8 @@ export async function expectDocument(page: Page, doc = DOC, website = false, sto
   const comments = page.locator('.gutter-comments');
   await expect(comments.locator('.comment-thread')).toHaveCount(doc.comments.length);
   for (const thread of doc.comments) {
-    const card = comments.locator('[data-thread-id]').filter({ has: page.locator('.anchor', { hasText: thread.quote }) });
+    // Exact quoted text: overlapping quotes must not match each other's card.
+    const card = comments.locator('[data-thread-id]').filter({ has: page.getByText(`"${thread.quote}"`, { exact: true }) });
     await expect(card.locator('.anchor')).toHaveText(`"${thread.quote}"`);
     await expect(card.locator('.author')).toHaveText(thread.replies.map(reply => reply.author));
     await expect(card.locator('.body')).toHaveText(thread.replies.map(reply => reply.body));

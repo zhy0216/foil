@@ -23,7 +23,7 @@ default_model: opencode-go/deepseek-flash
 | [02-cjk-fonts-paper.md](done/02-cjk-fonts-paper.md) | P1 | medium | opencode，继承默认 | opencode-go/deepseek-flash | ✅ 已归档：中文字体回退、统一标题字体与 Paper 外观 |
 | [03-semantic-reader-mapping.md](done/03-semantic-reader-mapping.md) | P1 | hard | opencode，继承默认 | opencode-go/deepseek-flash | ✅ 已归档：语义 Markdown 阅读结构与评论源映射 |
 | [04-reading-mode-toc.md](done/04-reading-mode-toc.md) | P1 | hard | opencode，继承默认 | opencode-go/deepseek-flash | ✅ 已归档：阅读模式、标题与目录接入各宿主 |
-| [07-visual-regressions.md](07-visual-regressions.md) | P1 | medium | opencode，继承默认 | opencode-go/deepseek-flash | 01–04 阶段视觉检查与完整回归 |
+| [07-visual-regressions.md](done/07-visual-regressions.md) | P1 | medium | opencode，继承默认 | opencode-go/deepseek-flash | ✅ 已归档：01–04 阶段视觉检查与完整回归 |
 
 ## 文件
 
@@ -31,7 +31,7 @@ default_model: opencode-go/deepseek-flash
 2. [02-cjk-fonts-paper.md](done/02-cjk-fonts-paper.md) — ✅ 已归档。依赖 `01-typography-scope-lists.md`。
 3. [03-semantic-reader-mapping.md](done/03-semantic-reader-mapping.md) — ✅ 已归档。依赖 `01-typography-scope-lists.md`；与 02 无硬依赖，但都修改共享样式，可并行、由集成阶段串行 rebase。
 4. [04-reading-mode-toc.md](done/04-reading-mode-toc.md) — ✅ 已归档。依赖 `02-cjk-fonts-paper.md`、`03-semantic-reader-mapping.md`。
-5. [07-visual-regressions.md](07-visual-regressions.md) — 依赖 01–04 全部合入。
+5. [07-visual-regressions.md](done/07-visual-regressions.md) — ✅ 已归档。依赖 01–04 全部合入。
 
 ## 调度
 
