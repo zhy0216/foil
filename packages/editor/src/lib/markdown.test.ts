@@ -268,18 +268,44 @@ describe('renderDecorated structural correctness', () => {
   });
 
   it.each([
-    ['#  heading', 'h1'],
-    ['######\t heading', 'h6'],
-    ['>quote', 'quote'],
-    ['-   item', 'list'],
-    ['1.  item', 'list'],
-    ['42)\titem', 'list'],
-    ['-\t[x]\titem', 'task'],
-    ['+\t[X]\titem', 'done'],
-    ['*\t[ ]\titem', 'task'],
-  ])('retains decoration for %j', (md, cls) => {
+    ['#  heading', ['h1']],
+    ['######\t heading', ['h6']],
+    ['>quote', ['quote']],
+    ['-   item', ['list', 'ulist']],
+    ['*   item', ['list', 'ulist']],
+    ['+\titem', ['list', 'ulist']],
+    ['1.  item', ['list', 'olist']],
+    ['2.  item', ['list', 'olist']],
+    ['42)\titem', ['list', 'olist']],
+    ['-\t[x]\titem', ['list', 'task']],
+    ['+\t[X]\titem', ['list', 'task', 'done']],
+    ['*\t[ ]\titem', ['list', 'task']],
+  ])('retains decoration for %j', (md, classes) => {
     const host = renderMarkdown(md);
     expectMarkdownText(host, md);
-    expect(host.firstElementChild!.classList.contains(cls)).toBe(true);
+    const block = host.firstElementChild!;
+    for (const cls of classes) expect(block.classList.contains(cls)).toBe(true);
+  });
+
+  it('shows raw ordered markers instead of a forged bullet', () => {
+    const host = renderMarkdown('1. First\n2. Second\n42) Answer');
+    const lines = Array.from(host.children);
+    expect(lines.map((line) => line.textContent)).toEqual(['1. First', '2. Second', '42) Answer']);
+    expect(host.querySelectorAll('.ln.olist .syn-bullet')).toHaveLength(0);
+    expect(lines[0].querySelector('.syn')!.textContent).toBe('1. ');
+    expect(lines[2].querySelector('.syn')!.textContent).toBe('42) ');
+
+    const unordered = renderMarkdown('- one\n* [x] two');
+    expect(unordered.querySelectorAll('.ln.ulist .syn-bullet')).toHaveLength(1);
+    expect(unordered.querySelectorAll('.ln.task .syn-bullet')).toHaveLength(1);
+  });
+
+  it('keeps list indentation outside the hidden bullet span', () => {
+    const host = renderMarkdown('  - nested\n\t1. ordered');
+    const [unordered, ordered] = Array.from(host.children);
+    expect(unordered.textContent).toBe('  - nested');
+    expect(unordered.firstElementChild!.textContent).toBe('  ');
+    expect(ordered.textContent).toBe('\t1. ordered');
+    expect(ordered.firstElementChild!.textContent).toBe('\t1. ');
   });
 });

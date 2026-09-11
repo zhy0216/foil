@@ -93,8 +93,11 @@ function classifyLine(line: string, inFence: number | null): LineInfo {
       kind: 'task',
       cls: 'list task' + (done ? ' done' : ''),
       inline:
+        '<span class="syn">' +
+        escapeHtml(m[1]) +
+        '</span>' +
         '<span class="syn syn-bullet">' +
-        escapeHtml(m[1] + m[2] + m[3]) +
+        escapeHtml(m[2] + m[3]) +
         '</span>' +
         '<span class="syn-task">[' +
         m[4] +
@@ -106,10 +109,13 @@ function classifyLine(line: string, inFence: number | null): LineInfo {
   if ((m = line.match(/^(\s*)([-*+])(\s+)(.*)$/))) {
     return {
       kind: 'list',
-      cls: 'list',
+      cls: 'list ulist',
       inline:
+        '<span class="syn">' +
+        escapeHtml(m[1]) +
+        '</span>' +
         '<span class="syn syn-bullet">' +
-        escapeHtml(m[1] + m[2] + m[3]) +
+        escapeHtml(m[2] + m[3]) +
         '</span>' +
         inlineHtml(m[4]),
     };
@@ -117,9 +123,9 @@ function classifyLine(line: string, inFence: number | null): LineInfo {
   if ((m = line.match(/^(\s*)(\d+)([.)])(\s+)(.*)$/))) {
     return {
       kind: 'olist',
-      cls: 'list',
+      cls: 'list olist',
       inline:
-        '<span class="syn syn-bullet">' +
+        '<span class="syn">' +
         escapeHtml(m[1] + m[2] + m[3] + m[4]) +
         '</span>' +
         inlineHtml(m[5]),

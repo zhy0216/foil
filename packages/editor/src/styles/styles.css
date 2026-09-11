@@ -342,8 +342,6 @@ input, textarea { font: inherit; color: inherit; }
 .readonly-document .editor-wrap { grid-column: 1; }
 .readonly-document .gutter-comments { grid-column: 2; position: relative; }
 .preview { white-space: pre-wrap; user-select: text; -webkit-user-select: text; }
-.editor.preview .ln { min-height: calc(1em * var(--prose-leading, 1.7)); }
-.preview .ln.p { font-size: inherit; line-height: inherit; }
 .preview .anchor-hl { cursor: pointer; scroll-margin-block: 120px; }
 .readonly-thread-position { position: absolute; width: 100%; }
 .readonly-document .comment-thread.readonly { position: static; margin: 0; }
@@ -364,7 +362,13 @@ input, textarea { font: inherit; color: inherit; }
 }
 
 /* line wrappers */
-.editor .ln { display: block; min-height: 1.7em; }
+.editor .ln { display: block; }
+/* Prose and empty lines keep a full, clickable line box that follows the
+   density setting. Headings size to their own line-height, lists and code
+   keep their natural height instead of a fixed 1.7em floor. */
+.editor .ln.p,
+.editor .ln.empty { min-height: calc(1em * var(--prose-leading, 1.7)); }
+.editor .ln.p { color: var(--fg-muted); }
 .editor .ln.empty::before {
   content: "";
 }
@@ -414,23 +418,29 @@ input, textarea { font: inherit; color: inherit; }
   color: var(--fg-muted);
   margin: 0.8em 0 0.2em;
 }
+/* Quotes read as normal prose with a quiet rule; explicit inline emphasis
+   (bold/italic/mark/strike) still carries the user's meaning. */
 .editor .ln.quote {
-  border-left: 3px solid var(--accent);
+  border-left: 3px solid var(--border-strong);
   padding-left: 14px;
-  color: var(--fg-muted);
-  font-style: italic;
+  color: var(--fg-subtle);
 }
 .editor .ln.list {
   padding-left: 4px;
+  white-space: pre-wrap;
 }
-.editor .ln.list .syn-bullet {
+/* Only unordered and task lists hide the raw marker behind a bullet. Ordered
+   lists keep their original number text (1., 2., 42)), including indentation. */
+.editor .ln.ulist .syn-bullet,
+.editor .ln.task .syn-bullet {
   color: transparent;
   font-weight: 600;
   display: inline-block;
   width: 1.2em;
   position: relative;
 }
-.editor .ln.list .syn-bullet::before {
+.editor .ln.ulist .syn-bullet::before,
+.editor .ln.task .syn-bullet::before {
   content: "•";
   position: absolute;
   inset-inline-start: 0;

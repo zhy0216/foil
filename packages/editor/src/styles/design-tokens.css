@@ -1,8 +1,11 @@
 /* ============================================================
-   Alumnium Design System — Colors & Type
-   Source of truth: alumnium.ai (Astro + Starlight theme)
+   Foil design tokens — UI colors, fonts and type scale, shared
+   by the website, extension and standalone reader.
    Palette: Cerulean Blue (accent) + Zinc (neutrals)
    Fonts: platform default ui-sans-serif / ui-monospace stacks
+   Document prose typography is scoped to the editor/preview
+   containers in styles.css; only tokens and UI chrome defaults
+   belong in this file.
    ============================================================ */
 
 :root {
@@ -32,27 +35,27 @@
   --zinc-900: oklch(21.0% .006 285.885);
   --zinc-950: oklch(14.1% .005 285.823);
 
-  /* ---------- SEMANTIC HUES (Starlight) ---------- */
+  /* ---------- SEMANTIC HUES ---------- */
   --hue-orange: 41;
   --hue-green:  101;
   --hue-blue:   234;
   --hue-purple: 281;
   --hue-red:    339;
 
-  /* ---------- TYPE — stacks (Starlight default) ---------- */
+  /* ---------- TYPE — stacks ---------- */
   --font-sans: ui-sans-serif, system-ui, sans-serif,
                "Apple Color Emoji", "Segoe UI Emoji",
                "Segoe UI Symbol", "Noto Color Emoji";
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
                "Liberation Mono", "Courier New", monospace;
 
-  /* Weights actually used on the site */
+  /* UI weights */
   --fw-regular:  400;
   --fw-medium:   500;
   --fw-semibold: 600;
   --fw-bold:     700;
 
-  /* Starlight type scale */
+  /* UI type scale */
   --text-2xs: 0.75rem;
   --text-xs:  0.8125rem;
   --text-sm:  0.875rem;
@@ -81,7 +84,7 @@
 }
 
 /* ============================================================
-   DARK (default on alumnium.ai)
+   DARK (default)
    ============================================================ */
 :root,
 :root[data-theme="dark"] {
@@ -140,24 +143,16 @@
 }
 
 /* ============================================================
-   BASE / SEMANTIC TYPOGRAPHY
+   BASE / UI TYPOGRAPHY
+   Shared chrome only: page defaults, modal copy, inline code and
+   links. Document prose rules live in styles.css scoped to the
+   .editor/.preview containers, so prose settings never leak into
+   UI and UI rules never override --prose-size / --prose-leading.
    ============================================================ */
 html { font-family: var(--font-sans); color: var(--fg); background: var(--bg); }
 body { font-size: var(--text-base); line-height: 1.6; }
 
-h1, .h1 { font-size: var(--text-5xl); font-weight: var(--fw-semibold); line-height: 1.1;  letter-spacing: -0.02em; }
-h2, .h2 { font-size: var(--text-4xl); font-weight: var(--fw-semibold); line-height: 1.15; letter-spacing: -0.015em; }
-h3, .h3 { font-size: var(--text-3xl); font-weight: var(--fw-semibold); line-height: 1.2;  letter-spacing: -0.01em; }
-h4, .h4 { font-size: var(--text-2xl); font-weight: var(--fw-semibold); line-height: 1.25; }
-h5, .h5 { font-size: var(--text-xl);  font-weight: var(--fw-semibold); line-height: 1.3; }
-h6, .h6 { font-size: var(--text-lg);  font-weight: var(--fw-semibold); line-height: 1.35; }
-
-p, .p      { font-size: var(--text-base); line-height: 1.65; color: var(--fg-muted); }
-.lead      { font-size: var(--text-lg); line-height: 1.55; color: var(--fg-muted); }
-.small     { font-size: var(--text-sm); color: var(--fg-subtle); }
-.caption   { font-size: var(--text-xs); color: var(--fg-subtle); text-transform: none; }
-
-code, kbd, samp, pre, .mono {
+code, kbd, samp, .mono {
   font-family: var(--font-mono);
   font-size: 0.925em;
 }
@@ -168,17 +163,6 @@ code, kbd, samp, pre, .mono {
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
 }
-pre {
-  background: var(--code-bg);
-  color: var(--code-fg);
-  padding: 1rem 1.25rem;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border);
-  overflow: auto;
-  line-height: 1.55;
-}
 
 a { color: var(--link); text-decoration: none; }
 a:hover { color: var(--link-hover); text-decoration: underline; text-underline-offset: 3px; }
-
-hr { border: 0; border-top: 1px solid var(--border); margin: 2rem 0; }
