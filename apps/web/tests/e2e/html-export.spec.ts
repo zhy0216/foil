@@ -278,7 +278,7 @@ test('mobile reader keeps all comments and settings when storage is denied', asy
   await reader.getByRole('radio', { name: 'Dark', exact: true }).click();
   await reader.getByRole('radio', { name: 'Compact', exact: true }).click();
   await reader.getByRole('radio', { name: 'Wide', exact: true }).click();
-  await reader.getByRole('button', { name: 'Aa Mono Plain code', exact: true }).click();
+  await reader.getByRole('button', { name: '中文 Aa 123 Mono Plain code', exact: true }).click();
   await reader.getByRole('button', { name: 'Violet', exact: true }).click();
   await reader.getByRole('button', { name: 'Done', exact: true }).click();
   await expect(reader.locator('html')).toHaveAttribute('data-theme', 'dark');

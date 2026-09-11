@@ -20,11 +20,13 @@ export interface DocState {
 }
 
 export type Theme = 'auto' | 'light' | 'dark';
-export type ProseFont = 'serif' | 'modern-serif' | 'sans' | 'humanist' | 'mono';
+export type ProseFont = 'serif' | 'modern-serif' | 'cjk-serif' | 'sans' | 'humanist' | 'mono';
 export type ProseSize = 'small' | 'default' | 'large';
 export type Accent = 'cerulean' | 'emerald' | 'ember' | 'violet' | 'graphite';
 export type EditorWidth = 'narrow' | 'default' | 'wide';
 export type Density = 'comfortable' | 'compact';
+/** Surface of the document area only; UI chrome keeps its own colors. */
+export type ReadingStyle = 'standard' | 'paper';
 
 export interface Settings {
   theme: Theme;
@@ -33,6 +35,7 @@ export interface Settings {
   accent: Accent;
   editorWidth: EditorWidth;
   density: Density;
+  readingStyle: ReadingStyle;
 }
 
 export interface SelectionInfo {

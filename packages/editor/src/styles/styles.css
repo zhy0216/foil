@@ -14,7 +14,8 @@ input, textarea { font: inherit; color: inherit; }
 
 /* serif used for prose body inside the editor — gives the doc a "long-form" feeling */
 :root {
-  --font-prose: ui-serif, Charter, "Source Serif Pro", "Iowan Old Style", "Apple Garamond", Baskerville, Georgia, serif;
+  --font-prose: ui-serif, Charter, "Source Serif Pro", "Iowan Old Style", "Apple Garamond", Baskerville, Georgia,
+                "Songti SC", "Source Han Serif SC", "Noto Serif CJK SC", STSong, SimSun, serif;
 }
 
 /* ---------- App layout ---------- */
@@ -293,6 +294,9 @@ input, textarea { font: inherit; color: inherit; }
   padding: 56px 32px 200px;
   position: relative;
   transition: --editor-width 200ms ease;
+  /* The reading style paints the sheet; `standard` is the page color. */
+  background: var(--doc-bg);
+  color: var(--doc-fg);
 }
 @media (max-width: 1100px) {
   .canvas {
@@ -312,7 +316,7 @@ input, textarea { font: inherit; color: inherit; }
   font-family: var(--prose-font, var(--font-prose));
   font-size: var(--prose-size, 19px);
   line-height: var(--prose-leading, 1.7);
-  color: var(--fg);
+  color: var(--doc-fg);
   caret-color: var(--accent);
   word-wrap: break-word;
   -webkit-user-modify: read-write-plaintext-only;
@@ -320,7 +324,7 @@ input, textarea { font: inherit; color: inherit; }
 .editor.readonly { -webkit-user-modify: read-only; }
 
 /* Shared reading view; the editor's decoration classes remain compatible. */
-.document-loading { padding: 32px; color: var(--fg-muted); }
+.document-loading { padding: 32px; color: var(--doc-muted); }
 .readonly-document { display: block; }
 .readonly-content { min-height: 100vh; display: grid; grid-template-rows: auto 1fr; }
 .readonly-title {
@@ -353,7 +357,7 @@ input, textarea { font: inherit; color: inherit; }
   overflow-wrap: anywhere;
   -webkit-line-clamp: unset;
 }
-.unlocated-comment { margin: 6px 0 0; color: var(--fg-subtle); font-size: var(--text-xs); }
+.unlocated-comment { margin: 6px 0 0; color: var(--doc-subtle); font-size: var(--text-xs); }
 .readonly-comments-heading { margin: 0 40px 16px 0; font-size: var(--text-lg); }
 .readonly-thread-item + .readonly-thread-item { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border); }
 @media (max-width: 1100px) {
@@ -368,7 +372,7 @@ input, textarea { font: inherit; color: inherit; }
    keep their natural height instead of a fixed 1.7em floor. */
 .editor .ln.p,
 .editor .ln.empty { min-height: calc(1em * var(--prose-leading, 1.7)); }
-.editor .ln.p { color: var(--fg-muted); }
+.editor .ln.p { color: var(--doc-muted); }
 .editor .ln.empty::before {
   content: "";
 }
@@ -376,27 +380,27 @@ input, textarea { font: inherit; color: inherit; }
 /* placeholder when fully empty */
 .editor.is-empty::before {
   content: attr(data-placeholder);
-  color: var(--fg-subtle);
+  color: var(--doc-subtle);
   pointer-events: none;
   position: absolute;
   font-style: italic;
 }
 
 /* inline syntax markers (faded) */
-.editor .syn { color: var(--fg-subtle); opacity: .55; font-weight: 400; font-style: normal; }
+.editor .syn { color: var(--doc-subtle); opacity: .55; font-weight: 400; font-style: normal; }
 
-/* line styling */
+/* line styling — headings follow the chosen document face, never UI chrome */
 .editor .ln.h1 {
-  font-family: var(--font-sans);
+  font-family: var(--prose-heading-font, var(--font-sans));
   font-size: 2.25rem;
   line-height: 1.15;
   font-weight: 700;
   letter-spacing: -0.02em;
   margin: 1.4em 0 0.4em;
-  color: var(--fg);
+  color: var(--doc-fg);
 }
 .editor .ln.h2 {
-  font-family: var(--font-sans);
+  font-family: var(--prose-heading-font, var(--font-sans));
   font-size: 1.625rem;
   line-height: 1.2;
   font-weight: 700;
@@ -404,26 +408,26 @@ input, textarea { font: inherit; color: inherit; }
   margin: 1.25em 0 0.35em;
 }
 .editor .ln.h3 {
-  font-family: var(--font-sans);
+  font-family: var(--prose-heading-font, var(--font-sans));
   font-size: 1.25rem;
   line-height: 1.25;
   font-weight: 600;
   margin: 1em 0 0.3em;
 }
 .editor .ln.h4, .editor .ln.h5, .editor .ln.h6 {
-  font-family: var(--font-sans);
+  font-family: var(--prose-heading-font, var(--font-sans));
   font-size: 1.05rem;
   line-height: 1.3;
   font-weight: 600;
-  color: var(--fg-muted);
+  color: var(--doc-muted);
   margin: 0.8em 0 0.2em;
 }
 /* Quotes read as normal prose with a quiet rule; explicit inline emphasis
    (bold/italic/mark/strike) still carries the user's meaning. */
 .editor .ln.quote {
-  border-left: 3px solid var(--border-strong);
+  border-left: 3px solid var(--doc-rule-strong);
   padding-left: 14px;
-  color: var(--fg-subtle);
+  color: var(--doc-subtle);
 }
 .editor .ln.list {
   padding-left: 4px;
@@ -452,32 +456,32 @@ input, textarea { font: inherit; color: inherit; }
   font-size: 0.9em;
 }
 .editor .ln.task.done {
-  color: var(--fg-subtle);
+  color: var(--doc-subtle);
   text-decoration: line-through;
-  text-decoration-color: var(--fg-subtle);
+  text-decoration-color: var(--doc-subtle);
 }
 .editor .ln.codefence {
   font-family: var(--font-mono);
   font-size: 0.875em;
-  color: var(--fg-subtle);
+  color: var(--doc-subtle);
 }
 .editor .ln.code {
   font-family: var(--font-mono);
   font-size: 0.875em;
-  background: var(--code-bg);
-  color: var(--code-fg);
+  background: var(--doc-code-bg);
+  color: var(--doc-code-fg);
   padding: 0 12px;
-  border-left: 1px solid var(--border);
-  border-right: 1px solid var(--border);
+  border-left: 1px solid var(--doc-rule);
+  border-right: 1px solid var(--doc-rule);
 }
 .editor .ln.code-first {
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--doc-rule);
   border-radius: var(--radius-md) var(--radius-md) 0 0;
   padding-top: 8px;
   margin-top: 1em;
 }
 .editor .ln.code-last {
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--doc-rule);
   border-radius: 0 0 var(--radius-md) var(--radius-md);
   padding-bottom: 8px;
   margin-bottom: 1em;
@@ -493,26 +497,26 @@ input, textarea { font: inherit; color: inherit; }
   position: absolute;
   top: 50%;
   left: 0; right: 0;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--doc-rule);
 }
-.editor .ln.hr .syn { color: var(--fg-subtle); opacity: 0; }
+.editor .ln.hr .syn { color: var(--doc-subtle); opacity: 0; }
 .editor .ln.hr:focus-within .syn,
-.editor:focus-within .ln.hr.cursor-here .syn { opacity: .7; color: var(--fg-subtle); }
+.editor:focus-within .ln.hr.cursor-here .syn { opacity: .7; color: var(--doc-subtle); }
 
 /* inline */
-.editor strong, .editor .md-bold { font-weight: 700; color: var(--fg); }
+.editor strong, .editor .md-bold { font-weight: 700; color: var(--doc-fg); }
 .editor em, .editor .md-em { font-style: italic; }
 .editor .md-code {
   font-family: var(--font-mono);
   font-size: 0.85em;
-  background: var(--code-bg);
-  border: 1px solid var(--border);
+  background: var(--doc-code-bg);
+  border: 1px solid var(--doc-rule);
   padding: 1px 5px;
   border-radius: 3px;
-  color: var(--code-fg);
+  color: var(--doc-code-fg);
 }
 .editor .md-link { color: var(--link); text-decoration: underline; text-underline-offset: 3px; }
-.editor .md-strike { text-decoration: line-through; color: var(--fg-subtle); }
+.editor .md-strike { text-decoration: line-through; color: var(--doc-subtle); }
 .editor .md-mark { background: color-mix(in oklch, var(--accent) 20%, transparent); border-radius: 2px; padding: 0 2px; }
 
 /* ---------- Selection toolbar ---------- */
@@ -540,9 +544,9 @@ input, textarea { font: inherit; color: inherit; }
 
 /* ---------- Comments ---------- */
 .comment-thread {
-  border: 1px solid var(--border);
+  border: 1px solid var(--doc-rule);
   border-radius: var(--radius-md);
-  background: var(--bg-raised);
+  background: var(--doc-raised);
   padding: 12px 14px;
   margin-bottom: 14px;
   font-size: var(--text-sm);
@@ -556,7 +560,7 @@ input, textarea { font: inherit; color: inherit; }
 }
 .comment-thread .anchor {
   font-size: var(--text-xs);
-  color: var(--fg-subtle);
+  color: var(--doc-subtle);
   border-left: 2px solid var(--accent);
   padding-left: 8px;
   margin-bottom: 8px;
@@ -568,19 +572,19 @@ input, textarea { font: inherit; color: inherit; }
 }
 .comment-thread .reply {
   padding-top: 8px;
-  border-top: 1px dashed var(--border);
+  border-top: 1px dashed var(--doc-rule);
   margin-top: 8px;
 }
 .comment-thread .reply:first-of-type:not(:only-child) {}
 .comment-thread .meta {
   display: flex; align-items: center; justify-content: space-between;
   font-size: var(--text-2xs);
-  color: var(--fg-subtle);
+  color: var(--doc-subtle);
   margin-bottom: 2px;
 }
-.comment-thread .author { font-weight: 600; color: var(--fg); }
+.comment-thread .author { font-weight: 600; color: var(--doc-fg); }
 .comment-thread .body {
-  color: var(--fg);
+  color: var(--doc-fg);
   line-height: 1.5;
   font-size: var(--text-sm);
   white-space: pre-wrap;
@@ -593,8 +597,8 @@ input, textarea { font: inherit; color: inherit; }
 .comment-thread textarea {
   flex: 1;
   resize: none;
-  background: var(--bg);
-  border: 1px solid var(--border);
+  background: var(--doc-bg);
+  border: 1px solid var(--doc-rule);
   border-radius: var(--radius-sm);
   padding: 6px 8px;
   font-size: var(--text-sm);
@@ -610,9 +614,9 @@ input, textarea { font: inherit; color: inherit; }
 .comment-thread .small-actions button {
   font-size: var(--text-2xs);
   padding: 2px 6px;
-  color: var(--fg-subtle);
+  color: var(--doc-subtle);
 }
-.comment-thread .small-actions button:hover { color: var(--fg); }
+.comment-thread .small-actions button:hover { color: var(--doc-fg); }
 
 /* Mobile bottom sheet for threads (only shown ≤1100px) */
 .mobile-thread-overlay { display: none; }
@@ -672,7 +676,7 @@ input, textarea { font: inherit; color: inherit; }
 /* New comment composer */
 .composer {
   position: absolute;
-  background: var(--bg-raised);
+  background: var(--doc-raised);
   border: 1px solid var(--accent);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-md);
@@ -683,7 +687,7 @@ input, textarea { font: inherit; color: inherit; }
 }
 .composer .quote {
   font-size: var(--text-xs);
-  color: var(--fg-subtle);
+  color: var(--doc-subtle);
   border-left: 2px solid var(--accent);
   padding-left: 8px;
   margin-bottom: 8px;
@@ -694,8 +698,8 @@ input, textarea { font: inherit; color: inherit; }
 .composer textarea {
   width: 100%;
   resize: vertical;
-  background: var(--bg);
-  border: 1px solid var(--border);
+  background: var(--doc-bg);
+  border: 1px solid var(--doc-rule);
   border-radius: var(--radius-sm);
   padding: 6px 8px;
   font-size: var(--text-sm);
@@ -710,12 +714,12 @@ input, textarea { font: inherit; color: inherit; }
 .composer input.name-input {
   background: transparent;
   border: 0;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--doc-rule);
   padding: 4px 0;
   font-size: var(--text-xs);
   width: 100%;
   margin-bottom: 6px;
-  color: var(--fg);
+  color: var(--doc-fg);
 }
 .composer input.name-input:focus { border-bottom-color: var(--accent); }
 
@@ -1150,8 +1154,9 @@ input, textarea { font: inherit; color: inherit; }
 .font-card {
   position: relative;
   display: flex;
-  align-items: center;
-  gap: 12px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
   padding: 10px 12px;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
@@ -1166,14 +1171,14 @@ input, textarea { font: inherit; color: inherit; }
   background: color-mix(in oklch, var(--accent) 6%, var(--bg-raised));
   box-shadow: 0 0 0 1px var(--accent);
 }
+/* The sample renders the real stack in Chinese and Latin, so a missing CJK
+   face is visible before the reader commits to it. */
 .font-card-preview {
-  font-size: 22px;
-  line-height: 1;
+  font-size: 15px;
+  line-height: 1.35;
   font-weight: 600;
   color: var(--fg);
-  letter-spacing: -0.01em;
-  flex-shrink: 0;
-  width: 28px;
+  min-width: 0;
 }
 .font-card-label {
   display: flex;

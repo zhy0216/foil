@@ -59,6 +59,14 @@ export function SettingsModal({ open, onClose, settings, onChange, onReset }: Pr
         </div>
 
         <div className="settings-section">
+          <div className="settings-label">Reading style</div>
+          {seg('readingStyle', [
+            ['standard', 'Standard'],
+            ['paper', 'Paper'],
+          ])}
+        </div>
+
+        <div className="settings-section">
           <div className="settings-label">Prose font</div>
           <div className="font-grid">
             {PROSE_FONTS.map((o) => (
@@ -68,7 +76,7 @@ export function SettingsModal({ open, onClose, settings, onChange, onReset }: Pr
                 onClick={() => set('proseFont', o.value)}
               >
                 <span className="font-card-preview" style={{ fontFamily: o.stack }}>
-                  Aa
+                  中文 Aa 123
                 </span>
                 <span className="font-card-label">
                   <span>{o.label}</span>

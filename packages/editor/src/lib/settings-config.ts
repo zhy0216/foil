@@ -3,6 +3,7 @@ import type {
   EditorWidth,
   ProseFont,
   ProseSize,
+  ReadingStyle,
   Settings,
   Theme,
 } from '../types';
@@ -19,21 +20,40 @@ interface AccentDef {
   label: string;
   swatch: string;
   overrides: Record<string, string> | null;
+  /** Link colors darkened for light surfaces, merged over `overrides`. */
+  lightOverrides: Record<string, string> | null;
 }
+
+/* System font candidates only: nothing is bundled or downloaded, no pixel
+   parity is promised across platforms, and a family that is not installed
+   falls through to the next one. CJK names give Chinese prose and code
+   comments a matching face instead of whatever the generic family picks. */
+const HAN_SERIF = '"Source Han Serif SC", "Source Han Serif CN", "Noto Serif CJK SC"';
+/** Chinese-first stack for the dedicated CJK option. */
+const CJK_SERIF_FIRST = `${HAN_SERIF}, "Songti SC", STSong, SimSun`;
+/** Chinese fallback appended after the Latin faces of the existing options. */
+const CJK_SERIF = `"Songti SC", ${HAN_SERIF}, STSong, SimSun`;
+const CJK_SANS = '"Noto Sans Mono CJK SC", "Noto Sans CJK SC", "PingFang SC", "Microsoft YaHei"';
+const LATIN_SERIF = 'Charter, "Source Serif Pro", "Iowan Old Style", Baskerville, Georgia';
 
 export const PROSE_FONTS: ReadonlyArray<ProseFontDef> = [
   {
     value: 'serif',
     label: 'Serif',
     hint: 'Charter / Iowan',
-    stack:
-      'ui-serif, Charter, "Source Serif Pro", "Iowan Old Style", Baskerville, Georgia, serif',
+    stack: `ui-serif, ${LATIN_SERIF}, ${CJK_SERIF}, serif`,
   },
   {
     value: 'modern-serif',
     label: 'Modern',
     hint: 'New York / Times',
-    stack: '"New York", "Times New Roman", Times, serif',
+    stack: `"New York", "Times New Roman", Times, ${CJK_SERIF}, serif`,
+  },
+  {
+    value: 'cjk-serif',
+    label: 'CJK Serif',
+    hint: 'Source Han / Songti',
+    stack: `${CJK_SERIF_FIRST}, ui-serif, ${LATIN_SERIF}, serif`,
   },
   {
     value: 'sans',
@@ -51,7 +71,7 @@ export const PROSE_FONTS: ReadonlyArray<ProseFontDef> = [
     value: 'mono',
     label: 'Mono',
     hint: 'Plain code',
-    stack: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+    stack: `ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, ${CJK_SANS}, monospace`,
   },
 ];
 
@@ -60,7 +80,7 @@ export const PROSE_FONT_MAP: Record<ProseFont, string> = Object.fromEntries(
 ) as Record<ProseFont, string>;
 
 export const ACCENTS: ReadonlyArray<AccentDef> = [
-  { value: 'cerulean', label: 'Cerulean', swatch: '#0278ff', overrides: null },
+  { value: 'cerulean', label: 'Cerulean', swatch: '#0278ff', overrides: null, lightOverrides: null },
   {
     value: 'emerald',
     label: 'Emerald',
@@ -73,6 +93,7 @@ export const ACCENTS: ReadonlyArray<AccentDef> = [
       '--link': '#34c489',
       '--link-hover': '#5cd8a4',
     },
+    lightOverrides: { '--link': '#0a7a49', '--link-hover': '#07603a' },
   },
   {
     value: 'ember',
@@ -86,6 +107,7 @@ export const ACCENTS: ReadonlyArray<AccentDef> = [
       '--link': '#ee7846',
       '--link-hover': '#f49165',
     },
+    lightOverrides: { '--link': '#b23c11', '--link-hover': '#922f0c' },
   },
   {
     value: 'violet',
@@ -99,6 +121,7 @@ export const ACCENTS: ReadonlyArray<AccentDef> = [
       '--link': '#9d72ed',
       '--link-hover': '#b294f1',
     },
+    lightOverrides: { '--link': '#5b2bc4', '--link-hover': '#48219f' },
   },
   {
     value: 'graphite',
@@ -112,12 +135,24 @@ export const ACCENTS: ReadonlyArray<AccentDef> = [
       '--link': '#a1a1aa',
       '--link-hover': '#d4d4d8',
     },
+    lightOverrides: { '--link': '#52525b', '--link-hover': '#3f3f46' },
   },
 ];
 
 export const ACCENT_MAP: Record<Accent, AccentDef> = Object.fromEntries(
   ACCENTS.map((a) => [a.value, a])
 ) as Record<Accent, AccentDef>;
+
+/**
+ * Accent custom properties for a resolved theme. The accent itself never
+ * changes, but link colors must stay legible on light paper as well as on a
+ * dark surface, so light themes darken them.
+ */
+export function accentVars(accent: Accent, theme: 'light' | 'dark'): Record<string, string> {
+  const def = ACCENT_MAP[accent];
+  if (!def?.overrides) return {};
+  return theme === 'light' ? { ...def.overrides, ...def.lightOverrides } : def.overrides;
+}
 
 export const EDITOR_WIDTHS: Record<EditorWidth, string> = {
   narrow: '620px',
@@ -138,12 +173,14 @@ export const DEFAULT_SETTINGS: Settings = {
   accent: 'cerulean',
   editorWidth: 'default',
   density: 'comfortable',
+  readingStyle: 'standard',
 };
 
 const THEMES: ReadonlySet<Theme> = new Set(['auto', 'light', 'dark']);
 const PROSE_SIZE_VALUES: ReadonlySet<ProseSize> = new Set(['small', 'default', 'large']);
 const DENSITIES: ReadonlySet<Settings['density']> = new Set(['comfortable', 'compact']);
 const EDITOR_WIDTH_VALUES: ReadonlySet<EditorWidth> = new Set(['narrow', 'default', 'wide']);
+const READING_STYLES: ReadonlySet<ReadingStyle> = new Set(['standard', 'paper']);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -173,11 +210,16 @@ export function isDensity(value: unknown): value is Settings['density'] {
   return typeof value === 'string' && DENSITIES.has(value as Settings['density']);
 }
 
+export function isReadingStyle(value: unknown): value is ReadingStyle {
+  return typeof value === 'string' && READING_STYLES.has(value as ReadingStyle);
+}
+
 /**
  * Parse persisted settings without trusting arbitrary object fields. Unknown
  * or invalid values fall back independently, so one bad preference does not
- * discard otherwise valid preferences. Legacy `foil_theme` is handled by the
- * caller when no structured settings record exists.
+ * discard otherwise valid preferences. A record written before `readingStyle`
+ * exists parses as `standard`. Legacy `foil_theme` is handled by the caller
+ * when no structured settings record exists.
  */
 export function parseSettings(value: unknown): Settings {
   if (!isRecord(value)) return { ...DEFAULT_SETTINGS };
@@ -188,6 +230,7 @@ export function parseSettings(value: unknown): Settings {
     accent: isAccent(value.accent) ? value.accent : DEFAULT_SETTINGS.accent,
     editorWidth: isEditorWidth(value.editorWidth) ? value.editorWidth : DEFAULT_SETTINGS.editorWidth,
     density: isDensity(value.density) ? value.density : DEFAULT_SETTINGS.density,
+    readingStyle: isReadingStyle(value.readingStyle) ? value.readingStyle : DEFAULT_SETTINGS.readingStyle,
   };
 }
 
@@ -199,6 +242,7 @@ export function isSettings(value: unknown): value is Settings {
     isProseSize(value.proseSize) &&
     isAccent(value.accent) &&
     isEditorWidth(value.editorWidth) &&
-    isDensity(value.density)
+    isDensity(value.density) &&
+    isReadingStyle(value.readingStyle)
   );
 }

@@ -46,8 +46,12 @@
   --font-sans: ui-sans-serif, system-ui, sans-serif,
                "Apple Color Emoji", "Segoe UI Emoji",
                "Segoe UI Symbol", "Noto Color Emoji";
+  /* Local CJK candidates keep Chinese code comments readable; nothing here is
+     downloaded, a missing family falls through to the next one. */
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
-               "Liberation Mono", "Courier New", monospace;
+               "Liberation Mono", "Courier New",
+               "Noto Sans Mono CJK SC", "Noto Sans CJK SC",
+               "PingFang SC", "Microsoft YaHei", monospace;
 
   /* UI weights */
   --fw-regular:  400;
@@ -140,6 +144,53 @@
 
   --code-bg:     var(--zinc-100);
   --code-fg:     var(--zinc-900);
+}
+
+/* ============================================================
+   DOCUMENT SURFACE — reading style
+   Semantic colors for the document area only: prose, headings,
+   code and comment cards. `standard` mirrors the UI palette, so
+   the reading style is invisible until `paper` is chosen; paper
+   retints the sheet without touching chrome (top bar, modals,
+   status bar) and without a fixed page size, texture or shadow.
+   ============================================================ */
+:root {
+  --doc-bg:          var(--bg);
+  --doc-raised:      var(--bg-raised);
+  --doc-fg:          var(--fg);
+  --doc-muted:       var(--fg-muted);
+  --doc-subtle:      var(--fg-subtle);
+  --doc-rule:        var(--border);
+  --doc-rule-strong: var(--border-strong);
+  --doc-code-bg:     var(--code-bg);
+  --doc-code-fg:     var(--code-fg);
+}
+
+/* Warm dark paper. Dark is the default theme, so this needs no
+   [data-theme] attribute to apply. */
+:root[data-reading-style="paper"] {
+  --doc-bg:          #1b1815;
+  --doc-raised:      #242019;
+  --doc-fg:          #f2ece2;
+  --doc-muted:       #d5ccbe;
+  --doc-subtle:      #a99e90;
+  --doc-rule:        #37312a;
+  --doc-rule-strong: #4a4238;
+  --doc-code-bg:     #221e18;
+  --doc-code-fg:     #ece4d8;
+}
+
+/* Warm light paper with ink text. */
+:root[data-reading-style="paper"][data-theme="light"] {
+  --doc-bg:          #fdfaf3;
+  --doc-raised:      #fffdf7;
+  --doc-fg:          #26211c;
+  --doc-muted:       #4f463c;
+  --doc-subtle:      #6b6154;
+  --doc-rule:        #e8dfcf;
+  --doc-rule-strong: #d6c9b4;
+  --doc-code-bg:     #f6f0e3;
+  --doc-code-fg:     #33291f;
 }
 
 /* ============================================================
