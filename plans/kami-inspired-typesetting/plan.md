@@ -288,3 +288,36 @@ bun run build
 | 打印评论附录与更多简历/报告模板 | P2 / roadmap | 基础打印实际可用，有具体文档需求 |
 | 更准确的中文统计和阅读时间 | P2 / roadmap | 当前按空格计词对中文较粗略，另行统一 App 与 ReadOnlyDocument 的统计函数和估算文案 |
 | 本地嵌入开源 CJK 字体 | P2 / roadmap | 对一致外观有明确需求，能接受字体体积，并完成自包含文件与资源限制的专项设计 |
+
+## 执行结果
+
+本轮由 herdr-finish-plan 协调执行，范围为用户指定的 **01、02、03、04、07**；**05（打印/PDF）与 06（起始模板）按用户指令本轮未做**，留待后续追加（05 依赖 04、06 依赖 04，07 再扩展到 05/06 的打印与模板验收）。全部 agent 经 Herdr 启动，auto/YOLO 模式；01 用 `opencode-go/deepseek-flash`（运行中漂移至 qwen3.8-flash），02/03/04/07 用 `alibaba-token-plan-cn/qwen3.8-max`（用户中途改指定）。每个任务独立 worktree、单一最终 commit；协调器在合并前于各 worktree 以 `--force` 绕过 turbo 缓存亲自复跑仓库级校验，再 `git merge --ff-only` 合入 main，随后清理 worktree/workspace/任务分支。
+
+### 合入的 commit 与对应 todo
+
+| todo | 最终 commit | 内容 | 协调器独立校验（force） |
+| --- | --- | --- | --- |
+| 01-typography-scope-lists | `d55d769` | 文档样式作用域、字号/行盒/密度、olist/ulist/task 区分与原始编号、引用样式、typography 浏览器样本 | typecheck 3/3；editor 640 + extension 241；build |
+| 02-cjk-fonts-paper | `576e345` | CJK 字体回退与 cjk-serif 选项、中文 Aa 字体卡片、`readingStyle: standard｜paper` 与 `--doc-*` 语义变量、浅色 accent 链接对比度根因修复 | typecheck 3/3；editor 655 + extension 241；build |
+| 03-semantic-reader-mapping | `b06fd8f` | 新增 remark/mdast 解析依赖、`reading-document`/`reading-source-map`/`ReadingPreview`、评论源偏移映射、安全链接/图片边界、构建边界断言 | typecheck 3/3；editor 722 + extension 241；build+standalone 断言；bun audit / --prod 无漏洞 |
+| 04-reading-mode-toc | `b9ec9d2` | 本地 Read/Write（独立 `localView`）、阅读默认 Reading + Source 切换、`readerView` 接收方本地偏好、文档标题去重、目录导航（不改 `location.hash`）、四宿主接入 | typecheck 3/3；editor 736 + extension 241；build（standalone 550.19 kB）；根 e2e web 50 + extension 27 |
+| 07-visual-regressions | `bd9d4d7` | 固定排版样本（中/英/混排/嵌套/表格/emoji/评论场景）、行为断言矩阵（视口/缩放/外观/主题/字体/accent/宿主/离线/CSP）、截图基线、完整回归 | typecheck 3/3；editor 736 + extension 241；build；根 e2e web 62 + extension 28 |
+
+main 最终 HEAD：`bd9d4d7`。归档文件：`todos/done/01`、`02`、`03`、`04`、`07`（各含完成记录）。`todos/README.md` 状态与完成记录已更新。
+
+### 恢复与异常（均在同任务范围内恢复，未越权）
+
+- **01 恢复#1**：首轮 e2e 通过后停在 idle，未提交/未归档；发继续指令后完成校验、归档与单一 commit。
+- **04 恢复#1**：`pkill -f "vite preview"` 误杀自身包装 shell，导致 e2e 管道永久阻塞、会话卡死（context 冻结、无子进程）。esc 无效、ctrl+c 终止旧进程后，在同 pane 以同 kind/model/mode 重启 agent，21 个未提交改动完整保留；改用 `[v]ite preview` + `timeout` + 文件重定向（不用 `| tail`）跑完全部 e2e。扩展 e2e 首跑因缺 ZIP 产物使 package.spec 失败（环境步骤遗漏），先 `package` 再跑得 27/27。
+- **07 恢复#1**：尝试「查看」PNG 截图做人工视觉对照时，多模态接口报 `Download multimodal file timed out` 中断该轮；发继续指令明确禁止读图（视觉基线人工审批留线下），改为生成基线 + 行为断言，跑完整回归后提交。
+
+### blocked / deferred
+
+- 无 blocked 项。
+- deferred：**05 文档正文打印与 PDF 排版**、**06 简报/长文/信件起始模板**（用户本轮明确不做）。
+- 线下待办：07 生成的截图基线（`apps/web/test-results/visual-baseline/` 37 张/次、`apps/extension/test-results/visual-baseline/` 3 张/次，均在已忽略目录、每次运行重新生成）需人工对照审批；稳定后再考虑引入截图差异门槛。
+- 已知取舍（记录在案，非缺陷）：长代码行在阅读视图 `pre` 内滚动（页面无横向溢出）；未定位评论仅阅读视图可达；图片/脚注标记为原子高亮片段；病态 `==` 连串按 GFM 序列规则与 Foil 行内正则有细微差异（普通 `==x==` 完全一致）。
+
+### 体积影响（解析器接入后）
+
+03 引入 remark/mdast 解析依赖并在 04 接入阅读运行时：网站主 JS 与 standalone 各增约 +100 KB（min），`foil-standalone.js` 由 03 阶段 445.90 kB 增至 04 后 550.19 kB；构建断言（standalone 无编辑器/库/外部 chunk 依赖、扩展 manifest、CSP）全程通过，`bun audit` 与 `bun audit --prod` 无漏洞。
