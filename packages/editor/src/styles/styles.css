@@ -234,7 +234,9 @@ input, textarea { font: inherit; color: inherit; }
 }
 .doc-switcher-new:hover { background: var(--bg-raised); color: var(--fg); }
 
-.topbar-actions { display: flex; align-items: center; gap: 6px; }
+/* Wraps on narrow screens: the view toggle and Copy Markdown must never
+   force page-level horizontal overflow. */
+.topbar-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; row-gap: 6px; justify-content: flex-end; }
 
 .btn {
   display: inline-flex; align-items: center; gap: 6px;
@@ -1388,4 +1390,65 @@ input, textarea { font: inherit; color: inherit; }
 }
 .reading-preview .anchor-hl.active {
   background: color-mix(in oklch, var(--accent) 35%, transparent);
+}
+
+/* ============================================================
+   Reading front matter (04): document title, collapsible TOC
+   and the Reading/Source view toggle. The TOC lives inside the
+   content column — never a third fixed rail beside comments.
+   ============================================================ */
+.reading-front { margin-bottom: 1.6em; }
+.reading-doc-title {
+  font-family: var(--prose-heading-font, var(--font-sans));
+  font-size: 2.5rem;
+  line-height: 1.15;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--doc-fg);
+  margin: 0 0 0.5em;
+  overflow-wrap: anywhere;
+}
+.reading-toc {
+  border: 1px solid var(--doc-rule);
+  border-radius: var(--radius-md);
+  background: var(--doc-raised);
+  padding: 8px 14px;
+  margin: 0 0 1.2em;
+}
+.reading-toc summary {
+  cursor: pointer;
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  font-weight: var(--fw-medium);
+  color: var(--doc-muted);
+}
+.reading-toc nav ol { list-style: none; margin: 8px 0 4px; padding: 0; }
+.reading-toc li { margin: 2px 0; }
+.reading-toc a {
+  color: var(--doc-muted);
+  text-decoration: none;
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+}
+.reading-toc a:hover, .reading-toc a:focus-visible { color: var(--link); text-decoration: underline; text-underline-offset: 3px; }
+.reading-toc .toc-h1 { font-weight: 600; }
+.reading-toc .toc-h1 a { color: var(--doc-fg); }
+.reading-toc .toc-h2 { padding-left: 0.9em; }
+.reading-toc .toc-h3 { padding-left: 1.8em; }
+.reading-toc .toc-h4, .reading-toc .toc-h5, .reading-toc .toc-h6 { padding-left: 2.7em; }
+
+.view-toggle {
+  display: inline-flex;
+  gap: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 2px;
+}
+.view-toggle .btn { border: 0; padding: 3px 9px; font-size: var(--text-xs); }
+.view-toggle .btn[aria-pressed="true"] { background: var(--accent-lo); color: var(--accent-hi); }
+
+@media (max-width: 1100px) {
+  .reading-doc-title { font-size: 2rem; }
+  /* Compact chapter menu: collapsed by default, scrollable when opened. */
+  .reading-toc nav ol { max-height: 40vh; overflow-y: auto; }
 }

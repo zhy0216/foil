@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import { useReadingSettings } from '../hooks/useReadingSettings';
-import type { DocState, Settings } from '../types';
+import { parseReadingDocument } from '../lib/reading-document';
+import type { DocState, ReaderView, Settings } from '../types';
 import { Brand } from './Brand';
 import { IconComment, IconHelp, IconSettings, IconShare } from './Icons';
 import { Preview } from './Preview';
+import { CopyMarkdownButton, ReadingPreview } from './ReadingPreview';
 import { Thread } from './Thread';
 
 export interface ReadOnlyDocumentProps {
@@ -17,7 +19,18 @@ export interface ReadOnlyDocumentProps {
   viewingActions?: ReactNode;
   /** Optional host controls beside Settings/Share; standalone files omit them. */
   headerActions?: ReactNode;
+  /** Recipient-local view preference. Hosts own persistence; a missing or
+   *  invalid value falls back to the semantic Reading view. */
+  readerView?: ReaderView;
+  onReaderViewChange?: (view: ReaderView) => void;
+  /** Statusbar save-state text; shared views default to `● shared view`. */
+  statusLabel?: string;
 }
+
+const isReaderView = (value: unknown): value is ReaderView => value === 'reading' || value === 'source';
+/** Title/heading dedup compares readable text, not byte-for-byte source. */
+const dedupeKey = (value: string) => value.trim().replace(/\s+/g, ' ').toLowerCase();
+const MIN_TOC_HEADINGS = 3;
 
 interface ThreadPosition { id: string; top: number; anchored: boolean }
 const MOBILE_QUERY = '(max-width: 1100px)';
@@ -25,10 +38,28 @@ const MOBILE_QUERY = '(max-width: 1100px)';
 export function ReadOnlyDocument({
   doc, settings, onShare, onSettings, onHelp,
   viewingLabel = 'Read-only preview', viewingActions, headerActions,
+  readerView, onReaderViewChange, statusLabel = '● shared view',
 }: ReadOnlyDocumentProps) {
   const { editorWrapStyle, canvasStyle } = useReadingSettings(settings);
   const [activeAnchorId, setActiveAnchorId] = useState<string | null>(null);
   const [mobile, setMobile] = useState(() => matchMedia(MOBILE_QUERY).matches);
+  // Hosts persist the preference; uncontrolled fallback keeps the component
+  // usable on its own and defaults to Reading for missing/invalid values.
+  const [internalView, setInternalView] = useState<ReaderView>(() => (isReaderView(readerView) ? readerView : 'reading'));
+  const view: ReaderView = isReaderView(readerView) ? readerView : internalView;
+  const changeView = useCallback((next: ReaderView) => {
+    setInternalView(next);
+    onReaderViewChange?.(next);
+  }, [onReaderViewChange]);
+  // One parse feeds the front-matter title, the TOC and the reading body.
+  const parsed = useMemo(() => (view === 'reading' ? parseReadingDocument(doc.md) : null), [doc.md, view]);
+  const frontTitle = useMemo(() => {
+    if (!parsed || view !== 'reading') return null;
+    const title = doc.title.trim();
+    if (!title) return null;
+    const firstHeading = parsed.headings[0]?.text;
+    return firstHeading != null && dedupeKey(title) === dedupeKey(firstHeading) ? null : doc.title;
+  }, [parsed, view, doc.title]);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [layout, setLayout] = useState<{ positions: ThreadPosition[]; height: number }>({ positions: [], height: 0 });
   const previewRef = useRef<HTMLDivElement>(null);
@@ -100,7 +131,9 @@ export function ReadOnlyDocument({
       window.removeEventListener('resize', measure);
       observer?.disconnect();
     };
-  }, [doc.md, doc.comments, settings, mobile]);
+    // A Reading/Source switch swaps the preview element, so the anchor
+    // positions and observed nodes must be re-derived for the new view.
+  }, [doc.md, doc.comments, settings, mobile, view, parsed]);
 
   useEffect(() => {
     setActiveAnchorId(null);
@@ -152,6 +185,20 @@ export function ReadOnlyDocument({
     highlight.focus({ preventScroll: true });
   };
 
+  // Section jumps locate the heading element and scroll to it. The default
+  // anchor navigation is suppressed so the URL fragment — which carries share
+  // payloads — is never rewritten. Headings keep scroll-margin-block padding.
+  const jumpToHeading = useCallback((event: MouseEvent<HTMLAnchorElement>) => {
+    event.preventDefault();
+    const id = event.currentTarget.getAttribute('href')?.slice(1);
+    const preview = previewRef.current;
+    if (!id || !preview) return;
+    const target = preview.ownerDocument.getElementById(id);
+    if (!target || !preview.contains(target)) return;
+    target.scrollIntoView();
+    target.focus({ preventScroll: true });
+  }, []);
+
   const text = doc.md.replace(/[`*_~#>\[\]()!-]/g, ' ').replace(/\s+/g, ' ').trim();
   const words = text ? text.split(' ').length : 0;
   const positions = new Map(layout.positions.map((position) => [position.id, position]));
@@ -180,6 +227,11 @@ export function ReadOnlyDocument({
             ><IconComment />{doc.comments.length}</button>
           )}
           <div className="topbar-actions">
+            <div className="view-toggle" role="group" aria-label="Document view">
+              <button type="button" className="btn" aria-pressed={view === 'reading'} onClick={() => changeView('reading')}>Reading</button>
+              <button type="button" className="btn" aria-pressed={view === 'source'} onClick={() => changeView('source')}>Source</button>
+            </div>
+            {view === 'reading' && <CopyMarkdownButton markdown={doc.md} />}
             {headerActions}
             {onSettings && <button type="button" className="btn btn-icon" onClick={onSettings} title="Settings" aria-label="Settings"><IconSettings /></button>}
             {onShare && <button type="button" className="btn btn-ghost-bordered" onClick={onShare}><IconShare /> Share</button>}
@@ -188,7 +240,37 @@ export function ReadOnlyDocument({
 
         <main className={'canvas' + (doc.comments.length ? ' has-comments' : '')} style={canvasStyle}>
           <div className="editor-wrap" style={editorWrapStyle}>
-            <Preview ref={previewRef} markdown={doc.md} anchors={doc.comments} activeAnchorId={activeAnchorId} onAnchorClick={activateAnchor} />
+            {view === 'reading' ? (
+              <>
+                {(frontTitle || (parsed && parsed.headings.length >= MIN_TOC_HEADINGS)) && (
+                  <div className="reading-front">
+                    {frontTitle && <h1 className="reading-doc-title">{frontTitle}</h1>}
+                    {parsed && parsed.headings.length >= MIN_TOC_HEADINGS && (
+                      // Native collapsible region: open on desktop, a compact
+                      // chapter menu on mobile. Never a third fixed column.
+                      <details className="reading-toc" open={!mobile}>
+                        <summary>Contents</summary>
+                        <nav aria-label="Table of contents">
+                          <ol>
+                            {parsed.headings.map((heading) => (
+                              <li key={heading.id} className={`toc-h${Math.min(6, Math.max(1, heading.level))}`}>
+                                <a href={`#${heading.id}`} onClick={jumpToHeading}>{heading.text}</a>
+                              </li>
+                            ))}
+                          </ol>
+                        </nav>
+                      </details>
+                    )}
+                  </div>
+                )}
+                <ReadingPreview
+                  ref={previewRef} doc={parsed ?? undefined} markdown={doc.md} anchors={doc.comments}
+                  activeAnchorId={activeAnchorId} onAnchorClick={activateAnchor}
+                />
+              </>
+            ) : (
+              <Preview ref={previewRef} markdown={doc.md} anchors={doc.comments} activeAnchorId={activeAnchorId} onAnchorClick={activateAnchor} />
+            )}
           </div>
           {doc.comments.length > 0 && (
             <aside className="gutter-comments" aria-label="Comments" ref={gutterRef} style={{ minHeight: layout.height }}>
@@ -210,7 +292,7 @@ export function ReadOnlyDocument({
           <div className="right">
             {onHelp && <button type="button" onClick={onHelp} aria-label="About Foil" title="About Foil" className="help-link"><IconHelp /></button>}
             <a href="https://github.com/zhy0216/foil" target="_blank" rel="noopener noreferrer" aria-label="GitHub repository" className="github-link">GitHub</a>
-            <span className="save-state">● shared view</span>
+            <span className="save-state">{statusLabel}</span>
           </div>
         </div>
       </div>

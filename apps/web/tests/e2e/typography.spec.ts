@@ -171,6 +171,8 @@ test('preview reuses prose settings, ordered markers and readable quotes', async
 
   const recipient = await context.newPage();
   await recipient.goto(shareURL);
+  // This spec pins the line-faithful Source view; Reading is the default.
+  await recipient.getByRole('button', { name: 'Source', exact: true }).click();
   const preview = recipient.locator('.editor.readonly.preview');
   await expect(preview).toBeVisible();
 

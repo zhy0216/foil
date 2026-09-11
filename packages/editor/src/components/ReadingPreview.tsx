@@ -18,6 +18,9 @@ export interface ReadingPreviewProps {
   anchors: CommentThread[];
   activeAnchorId: string | null;
   onAnchorClick?: (id: string) => void;
+  /** Optional pre-parsed document for `markdown`, so a host deriving the
+   *  title/TOC shares one parse with the body. Parsed internally when absent. */
+  doc?: ReadingDocument;
 }
 
 interface RenderContext {
@@ -99,7 +102,9 @@ function renderLink(ctx: RenderContext, node: Extract<ReadingInline, { type: 'li
           // In-document jumps scroll; they must never rewrite the URL
           // fragment that carries share payloads.
           event.preventDefault();
-          event.currentTarget.ownerDocument.getElementById(headingId)?.scrollIntoView();
+          const target = event.currentTarget.ownerDocument.getElementById(headingId);
+          target?.scrollIntoView();
+          target?.focus({ preventScroll: true });
         }}
       >
         {label}
@@ -151,7 +156,9 @@ function renderBlocks(ctx: RenderContext, blocks: ReadingBlock[], tight = false)
     switch (block.type) {
       case 'heading': {
         const Tag = `h${Math.min(6, Math.max(1, block.level))}` as 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6';
-        return <Tag key={i} id={block.id}>{renderInlines(ctx, block.children)}</Tag>;
+        // Focusable target (not a tab stop) so TOC and in-document jumps can
+        // move focus without touching the URL fragment.
+        return <Tag key={i} id={block.id} tabIndex={-1}>{renderInlines(ctx, block.children)}</Tag>;
       }
       case 'paragraph':
         return tight
@@ -211,11 +218,11 @@ function renderBlocks(ctx: RenderContext, blocks: ReadingBlock[], tight = false)
  *  images never fetch. Copying uses the browser's native selection, so users
  *  copy exactly the visible text; see CopyMarkdownButton for the source. */
 export const ReadingPreview = forwardRef<HTMLDivElement, ReadingPreviewProps>(function ReadingPreview(
-  { markdown, anchors, activeAnchorId, onAnchorClick },
+  { markdown, anchors, activeAnchorId, onAnchorClick, doc: parsedDoc },
   ref
 ) {
   const prepared = useMemo(() => {
-    const doc = parseReadingDocument(markdown);
+    const doc = parsedDoc ?? parseReadingDocument(markdown);
     const { located } = locateComments(doc, anchors);
     const rangesByFragment = new Map<number, FragmentRange[]>();
     for (const [id, pieces] of located) {
@@ -226,7 +233,7 @@ export const ReadingPreview = forwardRef<HTMLDivElement, ReadingPreviewProps>(fu
       }
     }
     return { doc, rangesByFragment };
-  }, [markdown, anchors]);
+  }, [markdown, anchors, parsedDoc]);
 
   const quotes = useMemo(() => new Map(anchors.map((anchor) => [anchor.id, anchor.quote])), [anchors]);
   const ctx: RenderContext = {

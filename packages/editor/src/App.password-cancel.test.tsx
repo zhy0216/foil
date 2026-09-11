@@ -66,6 +66,9 @@ it('a newer password attempt wins over an older late result', async () => {
   expect(pending).toHaveLength(2);
   await act(async () => pending[1]({ state: shared }));
   await act(async () => pending[0]({ error: 'Old failed attempt' }));
+  expect(container.querySelector('.reading-preview')!.textContent).toContain(shared.md);
+  const source = [...container.querySelectorAll('button')].find(button => button.textContent === 'Source')!;
+  await act(async () => source.click());
   expect(getMarkdown(container.querySelector('.preview')!)).toBe(shared.md);
   expect(container.querySelector('.modal')).toBeNull();
   expect(localStorage.getItem('foil_doc_local')).toBe(JSON.stringify(local));

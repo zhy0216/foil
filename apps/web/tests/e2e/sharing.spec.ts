@@ -93,16 +93,24 @@ async function createPasswordLink(page: Page, unlock?: '+1 hour' | 'Custom') {
 async function expectPasswordGate(recipient: Page) {
   await expect(recipient.getByRole('heading', { name: 'This document is encrypted' })).toBeVisible();
   await expect(recipient.getByRole('heading', { name: /Time capsule/ })).toHaveCount(0);
-  await expect(recipient.locator('.editor')).toHaveCount(0);
+  // No body, TOC or reading structure may mount before the unlock.
+  await expect(recipient.locator('.editor, .reading-preview, .reading-toc, .reading-doc-title')).toHaveCount(0);
   await expect(recipient.getByText(DOCUMENT_MARKER, { exact: false })).toHaveCount(0);
   expect(new URL(recipient.url()).hash).toBe('');
 }
 
 async function expectSharedDocument(recipient: Page, sourceSnapshot: string) {
-  await expect(recipient.locator('.editor.readonly')).toBeVisible({ timeout: 30_000 });
+  // Official reading defaults to the semantic Reading view.
+  await expect(recipient.locator('.reading-preview')).toBeVisible({ timeout: 30_000 });
+  await expect(recipient.locator('.reading-preview')).toContainText(DOCUMENT_MARKER);
+  // The Source toggle keeps the exact raw-markdown contract.
+  await recipient.getByRole('button', { name: 'Source', exact: true }).click();
+  await expect(recipient.locator('.editor.readonly')).toBeVisible();
   await expect(recipient.locator('.editor')).toHaveAttribute('contenteditable', 'false');
   await expect(recipient.locator('.editor')).toContainText(DOCUMENT_MARKER);
   await expect.poll(() => editorSnapshot(recipient)).toBe(sourceSnapshot);
+  await recipient.getByRole('button', { name: 'Reading', exact: true }).click();
+  await expect(recipient.locator('.reading-preview')).toBeVisible();
   await expect(recipient.getByRole('heading', { name: 'This document is encrypted' })).toHaveCount(0);
   await expect(recipient.getByRole('heading', { name: /Time capsule/ })).toHaveCount(0);
   await expect(recipient.getByText('Viewing shared link')).toBeVisible();
@@ -163,19 +171,19 @@ for (const unlock of ['+1 hour', 'Custom'] as const) {
     await expect(recipient.getByRole('heading', { name: 'This document is encrypted' })).toHaveCount(0);
     await expect(recipient.locator('.tc-countdown-time')).toHaveText('00:01:00');
     await expect(recipient.getByRole('button', { name: 'Decrypt', exact: true })).toBeHidden();
-    await expect(recipient.locator('.editor')).toHaveCount(0);
+    await expect(recipient.locator('.editor, .reading-preview')).toHaveCount(0);
 
     await recipient.clock.setFixedTime(UNLOCK_MS - 1000);
     await expect(recipient.locator('.tc-countdown-time')).toHaveText('00:00:01');
     await expect(recipient.getByRole('button', { name: 'Decrypt', exact: true })).toBeHidden();
-    await expect(recipient.locator('.editor')).toHaveCount(0);
+    await expect(recipient.locator('.editor, .reading-preview')).toHaveCount(0);
     await expect(recipient.getByText(DOCUMENT_MARKER, { exact: false })).toHaveCount(0);
     expect(recipientDrandRequests).toEqual([]);
 
     await recipient.clock.setFixedTime(UNLOCK_MS);
     await expect(recipient.getByText('Unsealed', { exact: true })).toBeVisible();
     await expect(recipient.getByRole('button', { name: 'Decrypt', exact: true })).toBeEnabled();
-    await expect(recipient.locator('.editor')).toHaveCount(0);
+    await expect(recipient.locator('.editor, .reading-preview')).toHaveCount(0);
     expect(recipientDrandRequests).toEqual([]);
     await recipient.getByRole('button', { name: 'Decrypt', exact: true }).click();
     await expectSharedDocument(recipient, sourceSnapshot);
@@ -209,7 +217,7 @@ test('still requires the correct password when a custom unlock date has already 
   await expect(recipient.getByText('Unsealed', { exact: true })).toBeVisible();
   await expect(recipient.locator('.tc-countdown-time')).toHaveCount(0);
   await expect(recipient.getByRole('button', { name: 'Decrypt' })).toBeEnabled();
-  await expect(recipient.locator('.editor')).toHaveCount(0);
+  await expect(recipient.locator('.editor, .reading-preview')).toHaveCount(0);
   expect(recipientDrandRequests).toEqual([]);
   await recipient.getByRole('button', { name: 'Decrypt' }).click();
   await expectSharedDocument(recipient, sourceSnapshot);

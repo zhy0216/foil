@@ -44,3 +44,13 @@ bun run test:e2e
 ~~~
 
 按 CLAUDE.md 补充替代 base 变体（构建 `/`、`FOIL_E2E_BASE=/` 运行网站 e2e），最后恢复默认 `/foil/` 构建。若 KDF 相关单测因并行负载超时，单独重跑确认，不修改这些测试。`git diff --check` 通过。
+
+## 完成记录（任务分支 herdr/plan-kami-ts-04-reading-mode-toc，最终 commit 见分支头）
+
+- 执行：opencode（接管会话续跑并完成验证），模型 `alibaba-token-plan-cn/qwen3.8-max`。
+- T1 本地 Read/Write：`App.tsx` 新增独立 `localView` 状态（不复用 `readOnly`）；进入阅读 `setComposer(null)/setSelection(null)` 后经 Editor 自身 `readOnly` 转换结束 IME 组合；编辑树保持挂载仅 `display:none`，Markdown/评论/undo/dirty/save-error 跨切换保留；回到 Write 由 `replaceSelection('')` 恢复光标；本地阅读显示 Back to editing，分享只读仍只有 Edit anyway、无 Read/Write 入口。测试：`App.reading.test.tsx`（多轮切换无写盘无 dirty、IME 组合不重复字符、光标恢复、QuotaExceeded 下 dirty 跨切换并由 pagehide 补写）。
+- T2 阅读默认与 Source：`ReadOnlyDocument` 受控/非受控双模 `readerView`（缺失/非法回退 Reading）；`parseReaderView` + `READER_VIEW_KEY='foil_reader_view'`（独立于 `foil_settings`，永不进快照）；App 网站/扩展接收方与 StandaloneApp 各自本地持久化，storage 拒绝时回退内存。门禁前挂载断言扩展到 `.reading-preview/.reading-toc/.reading-doc-title`（StandaloneApp.test、sharing.spec、html-export helper）。StandaloneApp.test 断言再分享载荷只含 `comments,md,title`。
+- T3 标题与目录：`ReadOnlyDocument` 单次 `parseReadingDocument` 同时供页首标题、TOC 与正文（经 `ReadingPreview` 新增 `doc` prop，测试断言与内部解析字节一致）；标题与首个 heading 规范化去重（trim/折叠空白/小写），原文不变；≥3 标题才渲染 TOC；重复标题用 03 的确定性去重 id（`features`/`features-1`）；原生 `<details>` 桌面默认展开、移动收起且限高滚动，位于内容列内、无第三固定栏；跳转 preventDefault + `scrollIntoView` + heading `tabIndex={-1}` focus，`location.hash` 不变（单测与 e2e 均断言）；标题 `scroll-margin-block:120px` 顶部留白；布局重算依赖加入 `view/parsed`。浏览器断言覆盖 375px（移动菜单/抽屉/无横向溢出）与 1280px（Desktop Chrome/Safari 项目默认视口）。
+- T4 回归：四宿主 e2e 全绿；评论定位/跨块/未定位入口在 Reading 与 Source 双模式断言（ReadOnlyDocument.test、reading-mode.spec、html-export.spec）；独立 HTML 再导出与分享入口正常；阅读路径不调用 `getMarkdown`/`setSelectionOffsets`（03 的 vi.mock + 构建断言继续把关，reading-build 断言通过）。
+- 体积（相对 03 归档记录）：网站主 JS 257,024 → 359,420 B（+102,396 B，解析器+阅读模块接入应用入口，与 03 预估 ≈98.6 KB 一致）；网站 CSS 33,346 → 36,181 B（+2,835 B，front matter/TOC/view-toggle 样式）；`foil-standalone.js` 443,345 → 550,192 B（+106,847 B，阅读运行时含解析器）；扩展主 JS 359.92 kB。CSP、分享协议、加密、存储格式与 URL 上限未动，无新增外部网络请求（reading-mode.spec 对接收方上下文全量拦截并断言 external=[]）。
+- 校验（顺序执行）：`bun install --frozen-lockfile` ✓；`bun run typecheck` ✓（3 任务）；`bun run test` ✓（editor 26 文件 736 通过，含本任务新增 29 项；KDF 未超时）；`bun run build` ✓（standalone/manifest 断言通过）；网站 e2e 默认 `/foil/` ✓ 50 通过（含 reading-mode.spec 5 项 × chromium/webkit）；扩展 e2e ✓ 27 通过（先 `bun run --cwd apps/extension package` 产出 ZIP，首跑 package.spec 因缺 ZIP 失败属环境步骤遗漏、非代码问题）；替代 base：`turbo build --filter=@foil/web -- --base /` + `FOIL_E2E_BASE=/` 网站 e2e ✓ 50 通过；最终 `bun run build` 恢复 `/foil/` 产物（index.html 引用已确认）；`git diff --check` ✓。

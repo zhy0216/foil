@@ -3,6 +3,7 @@ import type {
   EditorWidth,
   ProseFont,
   ProseSize,
+  ReaderView,
   ReadingStyle,
   Settings,
   Theme,
@@ -232,6 +233,15 @@ export function parseSettings(value: unknown): Settings {
     density: isDensity(value.density) ? value.density : DEFAULT_SETTINGS.density,
     readingStyle: isReadingStyle(value.readingStyle) ? value.readingStyle : DEFAULT_SETTINGS.readingStyle,
   };
+}
+
+/** Storage key for the recipient-local reader view preference. Kept separate
+ *  from `foil_settings` so it never travels with the document snapshot. */
+export const READER_VIEW_KEY = 'foil_reader_view';
+
+/** Missing or invalid values fall back to the semantic Reading view. */
+export function parseReaderView(value: unknown): ReaderView {
+  return value === 'source' ? 'source' : 'reading';
 }
 
 export function isSettings(value: unknown): value is Settings {

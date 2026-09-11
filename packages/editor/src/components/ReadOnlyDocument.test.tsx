@@ -105,6 +105,11 @@ describe('ReadOnlyDocument', () => {
     const snapshot = JSON.stringify(doc);
     render();
     expect(host.querySelector('h1')?.textContent).toBe(doc.title);
+    // The semantic Reading view is the default, even with storage denied.
+    expect(host.querySelector('.reading-preview')?.textContent).toContain('Intro 🌱');
+    expect(host.querySelector('.preview')).toBeNull();
+    // The Source toggle restores the exact raw-markdown contract.
+    click('Source');
     expect(getMarkdown(host.querySelector('.preview')!)).toBe(doc.md);
     for (const thread of doc.comments) {
       for (const reply of thread.replies) expect(host.textContent).toContain(reply.body);
@@ -118,9 +123,28 @@ describe('ReadOnlyDocument', () => {
     expect(JSON.stringify(doc)).toBe(snapshot);
   });
 
+  it('honors the host readerView preference, reports changes and rejects invalid values', () => {
+    const onChange = vi.fn();
+    render({ readerView: 'source', onReaderViewChange: onChange });
+    expect(host.querySelector('.preview')).not.toBeNull();
+    expect(host.querySelector('.reading-preview')).toBeNull();
+    click('Reading');
+    expect(onChange).toHaveBeenCalledExactlyOnceWith('reading');
+    // Controlled: the host value wins until the host changes it.
+    expect(host.querySelector('.preview')).not.toBeNull();
+    render({ readerView: 'garbage' as never });
+    expect(host.querySelector('.reading-preview')).not.toBeNull();
+    expect(host.querySelector('.preview')).toBeNull();
+    render({ readerView: undefined, onReaderViewChange: undefined });
+    click('Source');
+    expect(host.querySelector('.preview')).not.toBeNull();
+    expect(onChange).toHaveBeenCalledTimes(1);
+  });
+
   it('activates cross-line highlights with the keyboard and locates their text from desktop comments', () => {
     render();
     const anchor = highlight();
+    expect(anchor.closest('.reading-preview')).not.toBeNull();
     act(() => anchor.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true })));
     const quote = host.querySelector<HTMLButtonElement>('.gutter-comments .anchor')!;
     expect(document.activeElement).toBe(quote);
@@ -130,7 +154,17 @@ describe('ReadOnlyDocument', () => {
     expect(anchor.scrollIntoView).toHaveBeenCalledWith({ block: 'center' });
     click('"Removed quote"');
     expect(host.querySelectorAll('.comment-thread.active')[0]?.textContent).toContain('Unlocated comment');
-    expect(getMarkdown(host.querySelector('.preview')!)).toBe(doc.md);
+    // The same anchors stay located after switching to Source and back.
+    const spansOf = (root: ParentNode) => Array.from(root.querySelectorAll<HTMLElement>('.anchor-hl'))
+      .filter((span) => span.dataset.anchorId === 'cross"[]');
+    click('Source');
+    const source = host.querySelector<HTMLElement>('.preview')!;
+    expect(getMarkdown(source)).toBe(doc.md);
+    expect(spansOf(source).length).toBeGreaterThan(1);
+    expect(host.querySelector('.unlocated-comment')?.textContent).toContain('Quoted text not found');
+    click('Reading');
+    expect(host.querySelector('.preview')).toBeNull();
+    expect(spansOf(host.querySelector('.reading-preview')!).length).toBeGreaterThan(1);
   });
 
   it('stacks measured card heights and repositions on settings, resize and content reflow', () => {
@@ -230,8 +264,64 @@ describe('ReadOnlyDocument', () => {
     click('About Foil');
     expect(host.querySelector('.modal h3')?.textContent).toBe('About Foil');
     click('Done');
-    expect(host.querySelector('.modal')).toBeNull();
+    click('Source');
     expect(getMarkdown(host.querySelector('.preview')!)).toBe(doc.md);
+  });
+});
+
+describe('reading front matter', () => {
+  const article: DocState = {
+    title: 'Release Notes',
+    md: [
+      '# Release Notes', '', 'Intro text.', '',
+      '## Features', '', '- one', '',
+      '## Features', '', 'Duplicate heading body.', '',
+      '### Details', '', 'Tail.',
+    ].join('\n'),
+    comments: [],
+  };
+  const short: DocState = { title: 'Short', md: '# Only\n\n## Two headings', comments: [] };
+
+  it('deduplicates the page-head title against the first Markdown heading without touching the source', () => {
+    render({ doc: article });
+    expect(host.querySelector('.reading-doc-title')).toBeNull();
+    expect(host.querySelector('h1')?.textContent).toBe('Release Notes');
+    expect(host.querySelector('.reading-preview h1')?.textContent).toBe('Release Notes');
+    render({ doc: { ...article, title: 'Release Notes  发布说明' } });
+    expect(host.querySelector('.reading-doc-title')?.textContent).toBe('Release Notes  发布说明');
+    render({ doc: { ...article, title: 'release   notes' } });
+    expect(host.querySelector('.reading-doc-title')).toBeNull();
+    // Dedup only affects display; the shared source stays byte-identical.
+    click('Source');
+    expect(getMarkdown(host.querySelector('.preview')!)).toBe(article.md);
+  });
+
+  it('builds the TOC from the same parse with unique ids for duplicate headings, jumping without touching location.hash', () => {
+    render({ doc: article });
+    const entries = Array.from(host.querySelectorAll<HTMLElement>('.reading-toc nav a'));
+    expect(entries.map((entry) => entry.textContent)).toEqual(['Release Notes', 'Features', 'Features', 'Details']);
+    expect(entries.map((entry) => entry.getAttribute('href'))).toEqual(['#release-notes', '#features', '#features-1', '#details']);
+    expect(host.querySelectorAll('.reading-preview h2').length).toBe(2);
+    expect(host.querySelector('#features-1')).not.toBeNull();
+    expect(window.location.hash).toBe('');
+    act(() => entries[3].click());
+    expect(window.location.hash).toBe('');
+    const target = host.querySelector<HTMLElement>('#details')!;
+    expect(target.scrollIntoView).toHaveBeenCalled();
+    expect(document.activeElement).toBe(target);
+    // Desktop keeps the navigation region open; it is a native <details>.
+    expect(host.querySelector<HTMLDetailsElement>('.reading-toc')!.open).toBe(true);
+  });
+
+  it('hides the fixed navigation below three headings and collapses the compact mobile menu', () => {
+    render({ doc: short });
+    expect(host.querySelectorAll('.reading-toc')).toHaveLength(0);
+    expect(host.querySelector('.reading-doc-title')?.textContent).toBe('Short');
+    mobile = true;
+    act(() => mediaListeners.get('(max-width: 1100px)')!.forEach((listener) => listener()));
+    render({ doc: article });
+    expect(host.querySelector<HTMLDetailsElement>('.reading-toc')!.open).toBe(false);
+    expect(host.querySelectorAll('.reading-toc nav a')).toHaveLength(4);
   });
 });
 

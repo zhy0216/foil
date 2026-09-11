@@ -85,15 +85,22 @@ async function password(value: string) {
   await act(async () => host.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
 }
 function hidden() {
-  expect(host.querySelector('.editor, [contenteditable="true"]')).toBeNull();
+  // No body, TOC or reading structure may mount before the gates pass.
+  expect(host.querySelector('.editor, [contenteditable="true"], .reading-preview, .reading-toc, .reading-doc-title, .preview')).toBeNull();
   expect(host.textContent).not.toMatch(/SECRET_|UNRELATED_LOCAL_DOCUMENT/);
 }
 function preview() {
-  expect(getMarkdown(host.querySelector('.preview')!)).toBe(doc.md);
+  // Default Reading view: semantic structure, never the line-based editor DOM.
+  expect(host.querySelector('.reading-preview')!.textContent).toContain('SECRET_MD_🌱');
   expect(host.querySelector('h1')?.textContent).toBe(doc.title);
   expect(host.textContent).toContain(doc.comments[0].replies[0].body);
   expect(host.querySelector('input, textarea, [contenteditable="true"], .composer, .doc-switcher')).toBeNull();
   expect(host.textContent).not.toMatch(/Edit anyway|Reply|Delete/);
+  // The Source toggle keeps the exact raw-markdown contract.
+  act(() => button('Source').click());
+  expect(getMarkdown(host.querySelector('.preview')!)).toBe(doc.md);
+  act(() => button('Reading').click());
+  expect(host.querySelector('.reading-preview')!.textContent).toContain('SECRET_MD_🌱');
   expect(localStorage.getItem('foil_doc_other')).toBe('UNRELATED_LOCAL_DOCUMENT');
   expect(Object.keys(localStorage).filter(k => k.startsWith('foil_doc_'))).toEqual(['foil_doc_other']);
   expect(sessionStorage.getItem('foil_current_id')).toBe('other');
@@ -228,16 +235,44 @@ describe('standalone file lifecycle', () => {
     vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new DOMException('denied', 'SecurityError'); });
     const write = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new DOMException('denied', 'SecurityError'); });
     await mount();
+    // Denied storage falls back to the default Reading view, in memory only.
+    expect(host.querySelector('.reading-preview')!.textContent).toContain('SECRET_MD_🌱');
+    await click('Source');
     expect(getMarkdown(host.querySelector('.preview')!)).toBe(doc.md);
     await click('Settings'); await click('Large'); await click('Dark'); await click('Violet');
     expect(host.querySelector<HTMLElement>('.editor-wrap')!.style.getPropertyValue('--prose-size')).toBe('21px');
     expect(document.documentElement.dataset.theme).toBe('dark');
     expect(document.documentElement.style.getPropertyValue('--accent')).toBe('#6f3ad9');
-    expect(write.mock.calls.every(([key]) => key === 'foil_settings')).toBe(true);
+    expect(write.mock.calls.every(([key]) => key === 'foil_settings' || key === 'foil_reader_view')).toBe(true);
     await click('Done'); await click('About Foil');
     expect(host.querySelector('.modal h3')!.textContent).toBe('About Foil');
     await click('Done');
     expect(host.querySelector('[contenteditable="true"]')).toBeNull();
+  });
+
+  it('restores a stored recipient-local reader view without writing it back to the snapshot', async () => {
+    localStorage.setItem('foil_reader_view', 'source');
+    await mount();
+    expect(host.querySelector('.preview')).not.toBeNull();
+    expect(host.querySelector('.reading-preview')).toBeNull();
+    await click('Reading');
+    expect(host.querySelector('.reading-preview')).not.toBeNull();
+    expect(localStorage.getItem('foil_reader_view')).toBe('reading');
+    await click('Share');
+    await act(async () => vi.advanceTimersByTime(250));
+    // The re-share payload is the document itself; preferences never travel.
+    expect(vi.mocked(encodeUrl).mock.calls.length).toBeGreaterThan(0);
+    expect(vi.mocked(encodeUrl).mock.calls.every(([state]) =>
+      Object.keys(state).sort().join(',') === 'comments,md,title')).toBe(true);
+    await click('Done');
+  });
+
+  it('falls back to Reading for an invalid stored reader view', async () => {
+    localStorage.setItem('foil_reader_view', 'garbage');
+    await mount();
+    expect(host.querySelector('.reading-preview')).not.toBeNull();
+    expect(host.querySelector('.preview')).toBeNull();
+    expect(localStorage.getItem('foil_reader_view')).toBe('garbage');
   });
 
   it.each(['d', 'e', 'td', 'te'])('shares an unlocked file using its source and own resources with #%s protection', async scheme => {

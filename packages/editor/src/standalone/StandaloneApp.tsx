@@ -6,10 +6,10 @@ import { SettingsModal } from '../components/SettingsModal';
 import { ShareModal } from '../components/ShareModal';
 import { TimeCapsuleUnlock } from '../components/TimeCapsuleUnlock';
 import { HtmlShareFormatError } from '../lib/html-share-format';
-import { DEFAULT_SETTINGS, parseSettings } from '../lib/settings-config';
+import { DEFAULT_SETTINGS, parseReaderView, parseSettings, READER_VIEW_KEY } from '../lib/settings-config';
 import { assembleHtmlShare } from '../lib/html-export';
 import { decodeHtmlPayload, encodeHtmlPayload, type ShareOptions, type TimeCapsuleEnvelope } from '../lib/url-codec';
-import type { DocState, Settings } from '../types';
+import type { DocState, ReaderView, Settings } from '../types';
 import { readEmbeddedShareData, readStandaloneRuntime } from './resources';
 
 async function exportFileHtml(state: DocState, options: ShareOptions, shareBaseUrl?: string) {
@@ -49,6 +49,13 @@ function initialSettings(): Settings {
   catch { return { ...DEFAULT_SETTINGS }; }
 }
 
+/** Recipient-local Reading/Source preference; denied storage falls back to
+ *  memory, and a missing or invalid value falls back to Reading. */
+function initialReaderView(): ReaderView {
+  try { return parseReaderView(localStorage.getItem(READER_VIEW_KEY)); }
+  catch { return 'reading'; }
+}
+
 export function StandaloneApp() {
   // Capture the file once. Retry, StrictMode and location.hash never select a
   // different document, and no document-store fallback exists in this entry.
@@ -61,6 +68,7 @@ export function StandaloneApp() {
   const [phase, setPhase] = useState<Phase>({ kind: 'loading' });
   const generation = useRef(0);
   const [settings, setSettings] = useState(initialSettings);
+  const [readerView, setReaderView] = useState(initialReaderView);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
@@ -116,6 +124,11 @@ export function StandaloneApp() {
     try { localStorage.setItem('foil_settings', JSON.stringify(next)); }
     catch { /* Reading preferences continue in memory when storage is denied. */ }
   };
+  const changeReaderView = (next: ReaderView) => {
+    setReaderView(next);
+    try { localStorage.setItem(READER_VIEW_KEY, next); }
+    catch { /* The view preference continues in memory when storage is denied. */ }
+  };
 
   if (phase.kind === 'password') return <PasswordPromptModal
     error={phase.error} busy={phase.busy} onSubmit={password => void decode(password)} onCancel={cancel}
@@ -133,6 +146,7 @@ export function StandaloneApp() {
     <ReadOnlyDocument doc={phase.doc} settings={settings}
       onSettings={() => setSettingsOpen(true)} onHelp={() => setHelpOpen(true)}
       onShare={() => setShareOpen(true)}
+      readerView={readerView} onReaderViewChange={changeReaderView}
     />
     <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} settings={settings}
       onChange={changeSettings} onReset={() => changeSettings({ ...DEFAULT_SETTINGS })} />

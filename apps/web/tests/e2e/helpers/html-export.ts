@@ -100,7 +100,8 @@ export function inspectFile(html: string, mode: Mode, baseURL: string, password 
 }
 
 export async function expectHidden(page: Page) {
-  await expect(page.locator('.preview, [contenteditable="true"]')).toHaveCount(0);
+  // No body, TOC or reading structure may mount before the gates pass.
+  await expect(page.locator('.preview, .reading-preview, .reading-toc, .reading-doc-title, [contenteditable="true"]')).toHaveCount(0);
   const visibleText = await page.locator('#root').innerText();
   for (const sentinel of ['FILE_TITLE_SENTINEL', 'FILE_BODY_SENTINEL', 'FILE_COMMENT_SENTINEL']) {
     expect(visibleText).not.toContain(sentinel);
@@ -115,11 +116,18 @@ export async function passwordGate(page: Page, password = PASSWORD) {
 }
 
 export async function expectDocument(page: Page, doc = DOC, website = false, storageAccessible = true) {
-  await expect(page.locator('.preview')).toBeVisible({ timeout: 30_000 });
+  // Official reading defaults to the semantic Reading view.
+  await expect(page.locator('.reading-preview')).toBeVisible({ timeout: 30_000 });
   await expect(page.locator('.readonly-title')).toHaveText(doc.title);
+  await expect(page.locator('[contenteditable="true"], input:not([readonly]), textarea, .composer, .doc-switcher, .toolbar')).toHaveCount(0);
+  // The Source toggle keeps the exact raw-markdown snapshot contract; the
+  // reader returns to the default view for the assertions that follow.
+  await page.getByRole('button', { name: 'Source', exact: true }).click();
+  await expect(page.locator('.preview')).toBeVisible();
   expect(await snapshot(page)).toBe(doc.md);
   await expect(page.locator('.preview')).toHaveAttribute('contenteditable', 'false');
-  await expect(page.locator('[contenteditable="true"], input:not([readonly]), textarea, .composer, .doc-switcher, .toolbar')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Reading', exact: true }).click();
+  await expect(page.locator('.reading-preview')).toBeVisible();
   if (!website) await expect(page.getByRole('button', { name: /Edit anyway|New document|Reply|Delete/ })).toHaveCount(0);
   if (!website) await expect(page.locator('script')).toHaveCount(2);
   const brand = page.getByRole('img', { name: 'Foil', exact: true });

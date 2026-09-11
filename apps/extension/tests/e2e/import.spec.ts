@@ -99,6 +99,8 @@ test('native import modal rejects unsafe, oversized and malformed input; tab API
     await source.keyboard.press('Escape');
   }
   const retried = await importLink(source, link);
+  await expect(retried.locator('.reading-preview')).toBeVisible();
+  await retried.getByRole('button', { name: 'Source', exact: true }).click();
   await expect(retried.locator('.preview')).toBeVisible();
   expect(await documents(source)).toEqual(before);
   // Valid transport framing, invalid document schema: the shared decoder is
@@ -106,7 +108,7 @@ test('native import modal rejects unsafe, oversized and malformed input; tab API
   const invalidSchema = '#d=' + gzipSync('{}').toString('base64url');
   const invalid = await importLink(source, invalidSchema);
   await expect(invalid.locator('.toast')).toContainText('Could not load link:');
-  await expect(invalid.locator('.preview')).toHaveCount(0);
+  await expect(invalid.locator('.preview, .reading-preview')).toHaveCount(0);
   expect(await binding(invalid)).toBeNull();
   expect(await documents(source)).toEqual(before);
   expect(extension.network.requests).toEqual([]);

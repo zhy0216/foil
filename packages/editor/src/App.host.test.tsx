@@ -92,7 +92,7 @@ describe.each(['editing', 'read-only'] as const)('%s host boundary', mode => {
     await act(async () => action.click());
     expect(hostAction).toHaveBeenCalledOnce();
     if (mode === 'read-only') {
-      expect(container.querySelector('.preview')).not.toBeNull();
+      expect(container.querySelector('.reading-preview')).not.toBeNull();
       expect(Object.keys(localStorage).filter(key => key.startsWith('foil_doc_'))).toEqual([]);
       expect(window.location.hash).toBe('');
     }

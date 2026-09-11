@@ -2,6 +2,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CopyMarkdownButton, ReadingPreview, type ReadingPreviewProps } from './ReadingPreview';
+import { parseReadingDocument } from '../lib/reading-document';
 import type { CommentThread } from '../types';
 
 // The reading view must never pull in editing, storage or sharing code, and
@@ -111,6 +112,12 @@ describe('ReadingPreview content coverage', () => {
   it('renders an empty document without crashing', () => {
     const preview = render({ markdown: '' });
     expect(preview.textContent).toBe('');
+  });
+
+  it('accepts a host-provided parse with byte-identical output', () => {
+    const html = render({ markdown: commentMarkdown, anchors }).innerHTML;
+    act(() => root.render(<ReadingPreview {...props} doc={parseReadingDocument(commentMarkdown)} />));
+    expect(host.querySelector<HTMLDivElement>('.reading-preview')!.innerHTML).toBe(html);
   });
 
   it('keeps mermaid and unknown fences as source code text', () => {

@@ -92,16 +92,19 @@ for (const mode of ['d', 'e'] as const) {
     if (mode === 'e') await passwordGate(reader);
     await expectDocument(reader);
 
-    // Desktop anchors, including a cross-line quote and an unlocated thread.
-    const anchor = reader.locator('.preview .anchor-hl[role="button"]').first();
+    // Desktop anchors, including a cross-line quote and an unlocated thread,
+    // work identically in the default semantic Reading view.
+    const anchor = reader.locator('.reading-preview .anchor-hl[role="button"]').first();
     await anchor.press('Enter');
     await expect(reader.locator('.gutter-comments .anchor').first()).toBeFocused();
     await expect(reader.locator('.gutter-comments .comment-thread').first()).toHaveClass(/active/);
     await reader.locator('.gutter-comments .anchor').first().click();
     await expect(anchor).toBeFocused();
     await expect(reader.getByText('Quoted text not found in this document.')).toBeVisible();
-    // Keyboard typing has no editing path; native selection and copy retain Markdown.
+    // Keyboard typing has no editing path in either view; Source keeps the
+    // exact-markdown native selection and copy contract.
     await anchor.press('x');
+    await reader.getByRole('button', { name: 'Source', exact: true }).click();
     expect(await snapshot(reader)).toBe(DOC.md);
     const copied = await reader.locator('.preview').evaluate(el => {
       const range = document.createRange(); range.selectNodeContents(el);
@@ -112,6 +115,8 @@ for (const mode of ['d', 'e'] as const) {
       return clipboard.getData('text/plain');
     });
     expect(copied).toBe(DOC.md);
+    await reader.getByRole('button', { name: 'Reading', exact: true }).click();
+    await expect(reader.locator('.reading-preview')).toBeVisible();
 
     await reader.getByRole('button', { name: 'Settings', exact: true }).click();
     await reader.getByRole('radio', { name: 'Large', exact: true }).click();
@@ -268,11 +273,11 @@ test('mobile reader keeps all comments and settings when storage is denied', asy
   await drawer.getByRole('button', { name: 'Close', exact: true }).press('Escape');
   await expect(drawer).toHaveCount(0);
   await expect(reader.getByRole('button', { name: 'Read 2 comments' })).toBeFocused();
-  await reader.locator('.preview .anchor-hl[role="button"]').first().click();
+  await reader.locator('.reading-preview .anchor-hl[role="button"]').first().click();
   await expect(drawer).toBeVisible();
   await drawer.locator('.anchor').first().click();
   await expect(drawer).toHaveCount(0);
-  await expect(reader.locator('.preview .anchor-hl[role="button"]').first()).toBeFocused();
+  await expect(reader.locator('.reading-preview .anchor-hl[role="button"]').first()).toBeFocused();
   await reader.getByRole('button', { name: 'Settings', exact: true }).click();
   await reader.getByRole('radio', { name: 'Large', exact: true }).click();
   await reader.getByRole('radio', { name: 'Dark', exact: true }).click();

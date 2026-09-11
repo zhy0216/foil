@@ -69,8 +69,9 @@ describe('shared reading persistence', () => {
     expect(pending).toHaveLength(2);
     expect(window.location.hash).toBe('');
     await act(async () => pending[1]({ state: shared }));
-    expect(container.querySelector('.preview')).not.toBeNull();
+    expect(container.querySelector('.reading-preview')).not.toBeNull();
     await act(async () => pending[0]({ state: { title: 'Stale', md: 'stale', comments: [] } }));
+    await act(async () => button('Source').click());
     expect(getMarkdown(container.querySelector('.preview')!)).toBe(shared.md);
     expect(documentKeys()).toEqual([]);
     expect(sessionStorage.getItem('foil_current_id')).toBeNull();
@@ -105,6 +106,8 @@ describe('shared reading persistence', () => {
       await act(async () => button('Decrypt').click());
       expect(openTimeCapsule).toHaveBeenCalledWith(envelope);
     }
+    expect(container.querySelector('.reading-preview')!.textContent).toContain('Shared 中文');
+    await act(async () => button('Source').click());
     const preview = container.querySelector<HTMLElement>('.preview')!;
     expect(preview.getAttribute('contenteditable')).toBe('false');
     expect(getMarkdown(preview)).toBe(shared.md);

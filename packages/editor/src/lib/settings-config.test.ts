@@ -8,8 +8,19 @@ import {
   isReadingStyle,
   isSettings,
   isTheme,
+  parseReaderView,
   parseSettings,
 } from './settings-config';
+
+describe('reader view preference', () => {
+  it('keeps an explicit source choice and falls back to reading otherwise', () => {
+    expect(parseReaderView('source')).toBe('source');
+    expect(parseReaderView('reading')).toBe('reading');
+    for (const invalid of [null, undefined, '', 'Source', 'SOURCE', 'preview', 0, {}, []]) {
+      expect(parseReaderView(invalid)).toBe('reading');
+    }
+  });
+});
 
 describe('persisted settings validation', () => {
   it('accepts only known enum values and falls back per field', () => {
